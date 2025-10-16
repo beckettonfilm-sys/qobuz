@@ -269,7 +269,7 @@ let categorized = { DB:[], NR:[], FV:[], CS:[] };
 
 /* ======= Parsowanie linii ======= */
 function parseLine(line) {
-  const parts = line.split('-').map(p=>p.trim());
+  const parts = line.split(/\s*-\s*(?=[A-Za-z_]+:)/).map(p=>p.trim());
   const rec = { stream:'Q', selector:'N', folder:'brak', label:'', link:'', picture:'', artist:'', title:'', duration:0, heard:0, release_date:0, origSelector:'N'};
   parts.forEach(p=>{
     const [k,...rest] = p.split(':');
@@ -277,7 +277,7 @@ function parseLine(line) {
     const val = rest.join(':').trim();
     if(!key) return;
     if(key==='STREAM') rec.stream = val;
-    if(key==='SETECTOR') { rec.selector = val; rec.origSelector=val; }
+    if(key==='SETECTOR' || key==='SELECTOR') { rec.selector = val; rec.origSelector=val; }
     if(key==='FOLDER') rec.folder = val || 'brak';
     if(key==='LABEL') rec.label = val;
     if(key==='LINK') rec.link = val;
