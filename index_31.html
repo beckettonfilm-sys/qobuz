@@ -269,7 +269,7 @@ let categorized = { DB:[], NR:[], FV:[], CS:[] };
 
 /* ======= Parsowanie linii ======= */
 function parseLine(line) {
-  const parts = line.split('-').map(p=>p.trim());
+  const parts = line.split(/\s*-\s*(?=[A-Za-z_]+:)/).map(p=>p.trim());
   const rec = { stream:'Q', selector:'N', folder:'brak', label:'', link:'', picture:'', artist:'', title:'', duration:0, heard:0, release_date:0, origSelector:'N'};
   parts.forEach(p=>{
     const [k,...rest] = p.split(':');
@@ -277,7 +277,7 @@ function parseLine(line) {
     const val = rest.join(':').trim();
     if(!key) return;
     if(key==='STREAM') rec.stream = val;
-    if(key==='SETECTOR') { rec.selector = val; rec.origSelector=val; }
+    if(key==='SETECTOR' || key==='SELECTOR') { rec.selector = val; rec.origSelector=val; }
     if(key==='FOLDER') rec.folder = val || 'brak';
     if(key==='LABEL') rec.label = val;
     if(key==='LINK') rec.link = val;
@@ -549,51 +549,41 @@ function renderAlbumsPage(){
 
     applySelectorColorToCard(a, album.selector);
 
-    // folder-assign via right-click + CTRL on the card
-    a.addEventListener('contextmenu', ev=>{
-      // If CTRL pressed and a specific folder selected -> assign album to that folder
-      if(ev.ctrlKey && folderSelect.value && folderSelect.value !== '__all__') {
+    // folder-assign via SHIFT + left click on the card
+    a.addEventListener('click', ev=>{
+      // only act on shift without ctrl/meta and explicit primary button
+      if(ev.shiftKey && !ev.ctrlKey && !ev.metaKey && ev.button === 0){
         ev.preventDefault();
-        const targetFolder = folderSelect.value;
-        const prevFolder = album.folder || 'brak';
-        if(prevFolder === targetFolder) {
-          alert(`Album już znajduje się w folderze: ${targetFolder}`);
-          return;
+        if(folderSelect.value && folderSelect.value !== '__all__'){
+          const targetFolder = folderSelect.value;
+          const prevFolder = album.folder || 'brak';
+          if(prevFolder === targetFolder) {
+            return;
+          }
+          album.folder = targetFolder;
+          const rec = records.find(r => r.link === album.link);
+          if(rec) rec.folder = targetFolder;
+          foldersList.add(targetFolder);
+          rebuildFolderSelect();
+          renderAlbumsPage();
         }
-        // assign
-        album.folder = targetFolder;
-        const rec = records.find(r => r.link === album.link);
-        if(rec) rec.folder = targetFolder;
-        // ensure folder exists in set
-        foldersList.add(targetFolder);
-        // update counts and DOM but preserve currently selected folder
-        rebuildFolderSelect();
-        renderAlbumsPage();
-        // do NOT change selected folder; keep it active so user can add more albums
-        alert(`✅ Dodano album do folderu: ${targetFolder}`);
-        return;
       }
-      // otherwise, do not preventDefault here — let other handlers handle contextmenu on child elements
     });
 
-    // SHIFT + click: remove album from its folder (if assigned)
-    a.addEventListener('click', ev=>{
-      // only act on left click with shift (not when ctrl or meta)
-      if(ev.shiftKey && !ev.ctrlKey && !ev.metaKey){
+    // SHIFT + right click (context menu) removes album from its folder
+    a.addEventListener('contextmenu', ev=>{
+      if(ev.shiftKey && !ev.ctrlKey && !ev.metaKey && ev.button === 2){
         ev.preventDefault();
         if(album.folder && album.folder !== 'brak'){
-          const prev = album.folder;
           album.folder = 'brak';
           const rec = records.find(r => r.link === album.link);
           if(rec) rec.folder = 'brak';
           rebuildFolderSelect();
           renderAlbumsPage();
-          alert(`✅ Usunięto album z folderu: ${prev}`);
-        } else {
-          // if album wasn't in a folder, do nothing (or could inform)
-          // no action
         }
+        return;
       }
+      // otherwise, do not preventDefault here — let other handlers handle contextmenu on child elements
     });
 
     // HEARD adjust with numpad + right click on album-meta (existing behaviour)
