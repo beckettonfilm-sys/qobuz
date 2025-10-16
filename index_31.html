@@ -551,8 +551,8 @@ function renderAlbumsPage(){
 
     // folder-assign via SHIFT + left click on the card
     a.addEventListener('click', ev=>{
-      // only act on shift without ctrl/meta; click event implies primary button
-      if(ev.shiftKey && !ev.ctrlKey && !ev.metaKey){
+      // only act on shift without ctrl/meta and explicit primary button
+      if(ev.shiftKey && !ev.ctrlKey && !ev.metaKey && ev.button === 0){
         ev.preventDefault();
         if(folderSelect.value && folderSelect.value !== '__all__'){
           const targetFolder = folderSelect.value;
@@ -572,7 +572,7 @@ function renderAlbumsPage(){
 
     // SHIFT + right click (context menu) removes album from its folder
     a.addEventListener('contextmenu', ev=>{
-      if(ev.shiftKey && !ev.ctrlKey && !ev.metaKey){
+      if(ev.shiftKey && !ev.ctrlKey && !ev.metaKey && ev.button === 2){
         ev.preventDefault();
         if(album.folder && album.folder !== 'brak'){
           album.folder = 'brak';
