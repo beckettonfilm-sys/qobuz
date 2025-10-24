@@ -116,7 +116,15 @@ main { padding:18px; }
 
 /* card internals */
 .album-cover { width:100%; display:block; min-height:120px; object-fit:cover; background:#ddd; }
-.album-info { padding:8px; display:flex; flex-direction:column; gap:4px; flex-grow:1; }
+.album-info {
+  padding:8px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  flex-grow:1;
+  background: var(--album-info-bg, #fff);
+  transition: background-color .25s ease, background .25s ease;
+}
 .album-title { font-weight:bold; font-size:.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:8px; }
 .album-artist { font-size:.75rem; color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .album-meta { font-size:.72rem; color:#777; }
@@ -467,9 +475,9 @@ function processAndRender(){
     // Coming Soon: albumy < 30 minut
     if(alb._durationNum < 1800) categorized.CS.push(alb);
 
-    // New Releases: ostatnie 7 dni, nie oznaczone jako F
+    // New Releases: ostatnie 7 dni
     const diffDays = alb.release_date ? Math.floor((todayStart - alb.release_date)/86400) : 9999;
-    if(alb.release_date && diffDays >= 0 && diffDays <= 6 && alb.selector!=='F') categorized.NR.push(alb);
+    if(alb.release_date && diffDays >= 0 && diffDays <= 6) categorized.NR.push(alb);
 
     // Folder view collects albums przypisane do konkretnych folderów
     if(alb.folder && alb.folder !== 'brak') categorized.FD.push(alb);
@@ -692,6 +700,15 @@ if(pageSelect){
 
 navItems.forEach(it=>{ it.addEventListener('click', ()=>{ renderCategory(it.dataset.page); }); });
 
+folderSelect.addEventListener('change', ()=>{
+  if(currentCategory !== 'FD'){
+    renderCategory('FD');
+  } else {
+    currentPage = 0;
+    renderAlbumsPage();
+  }
+});
+
 /* ======= Selector cycling ======= */
 function cycleSelector(album, imgEl, cardEl){
   const current = album.selector || 'N';
@@ -705,15 +722,23 @@ function cycleSelector(album, imgEl, cardEl){
 }
 
 function applySelectorColorToCard(card, selector){
-  card.style.setProperty('--card-border-color','rgba(200,0,0,0.25)');
-  card.style.setProperty('--card-hover-color','rgba(200,0,0,1)');
+  let borderColor = 'rgba(200,0,0,0.25)';
+  let hoverColor = 'rgba(200,0,0,1)';
+  let infoBg = '#fff';
+
   if(selector==='X'){
-    card.style.setProperty('--card-border-color','rgba(100,100,100,0.4)');
-    card.style.setProperty('--card-hover-color','rgba(100,100,100,1)');
+    borderColor = 'rgba(100,100,100,0.4)';
+    hoverColor = 'rgba(100,100,100,1)';
+    infoBg = 'rgba(100,100,100,0.4)';
   } else if(selector==='F'){
-    card.style.setProperty('--card-border-color','rgba(0,150,136,0.4)');
-    card.style.setProperty('--card-hover-color','rgba(0,150,136,1)');
+    borderColor = 'rgba(0,150,136,0.4)';
+    hoverColor = 'rgba(0,150,136,1)';
+    infoBg = 'rgba(0,150,136,0.4)';
   }
+
+  card.style.setProperty('--card-border-color', borderColor);
+  card.style.setProperty('--card-hover-color', hoverColor);
+  card.style.setProperty('--album-info-bg', infoBg);
 }
 
 /* ======= Duration formatting ======= */
