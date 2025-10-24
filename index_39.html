@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Qobuz – Album Browser</title>
+<style>
+/* --- Layout / header --- */
+body {
+  font-family: Arial, sans-serif;
+  background:#f5f5f5;
+  margin:0;
+  padding:0;
+}
+header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  background:#1e1e1e;
+  color:white;
+  padding:10px 16px;
+  gap:12px;
+}
+.nav-links {
+  display:flex;
+  gap:14px;
+  align-items:center;
+}
+.nav-item {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  cursor:pointer;
+  color:white;
+  font-weight:bold;
+  transition: color .2s;
+  font-size:0.95rem;
+}
+.nav-item .count { font-weight:normal; font-size:.8rem; color:#bbb; margin-left:6px; }
+.nav-item .circle { width:10px; height:10px; border-radius:50%; border:2px solid #4CAF50; }
+.nav-item.active .circle { background:#4CAF50; }
+
+.header-controls {
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.header-controls button, .header-controls select, .header-controls input[type="date"] {
+  background:#4CAF50;
+  color:#fff;
+  border-radius:5px;
+  padding:6px 10px;
+  border:none;
+  font-weight:bold;
+  cursor:pointer;
+  font-size:.85rem;
+}
+.header-controls button { background:#1976D2; }
+.header-controls select, .header-controls input[type="date"] { background:#2e7d32; padding:6px; }
+
+/* folder control small buttons */
+.folder-controls { display:flex; gap:6px; align-items:center; margin-left:6px; }
+.folder-controls button { padding:6px 8px; font-weight:bold; border-radius:5px; border:none; cursor:pointer; background:#388E3C; color:white; }
+.folder-controls button.delete { background:#D32F2F; }
+.folder-controls button.export { background:#1976D2; }
+.folder-controls button.edit { background:#F57C00; }
+
+/* label filter panel */
+#label-filter-panel {
+  position:absolute;
+  top:56px;
+  right:20px;
+  background:#fff;
+  color:#000;
+  padding:10px;
+  border-radius:6px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.15);
+  max-height:320px;
+  overflow:auto;
+  display:none;
+  z-index:40;
+}
+
+/* main grid */
+main { padding:18px; }
+.albums-container {
+  display:grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap:15px;
+}
+
+.album-card {
+  background: #fff;
+  border-radius: 10px;
+  border-width: 3px;
+  border-style: solid;
+  border-color: var(--card-border-color, rgba(200,0,0,0.25));
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-size: .9rem;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease, border-width .25s ease;
+}
+
+.album-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  border-color: var(--card-hover-color, rgba(200,0,0,1));
+  border-width: 8px;
+}
+
+/* card internals */
+.album-cover { width:100%; display:block; min-height:120px; object-fit:cover; background:#ddd; }
+.album-info {
+  padding:8px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  flex-grow:1;
+  background: var(--album-info-bg, #fff);
+  transition: background-color .25s ease, background .25s ease;
+}
+.album-title { font-weight:bold; font-size:.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:8px; }
+.album-artist { font-size:.75rem; color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.album-meta { font-size:.72rem; color:#777; }
+
+.album-label-icon {
+  position:absolute;
+  bottom:6px;
+  right:6px;
+  width:56px;
+  height:28px;
+  object-fit:contain;
+  pointer-events:auto;
+  cursor:pointer;
+  opacity:0.95;
+  background:transparent;
+  border-radius:3px;
+}
+
+.album-cover.grayscale { filter:grayscale(100%); transition:filter .25s ease; }
+.album-card:hover .album-cover.grayscale { filter:grayscale(0%); }
+
+.nav-item { transition: color .25s ease; }
+
+.pagination { margin-top:18px; display:flex; justify-content:center; gap:15px; align-items:center; flex-wrap:wrap; }
+.pagination button { padding:8px 12px; border-radius:6px; border:none; background:#2196F3; color:white; cursor:pointer; font-weight:bold; }
+.pagination button:disabled { background:#aaa; cursor:not-allowed; }
+.pagination-info { display:flex; flex-direction:column; align-items:center; gap:6px; min-width:140px; }
+.page-info { font-weight:bold; color:#333; }
+.pagination-info label { display:flex; align-items:center; gap:6px; font-size:.85rem; color:#333; }
+.pagination-info select { padding:6px 8px; border-radius:6px; border:1px solid #ccc; font-weight:bold; cursor:pointer; }
+.pagination-info select:disabled { cursor:not-allowed; background:#eee; color:#777; }
+
+/* folder dot near title */
+.folder-dot {
+  width:0.8em;
+  height:0.8em;
+  border-radius:50%;
+  display:inline-block;
+  flex: 0 0 auto;
+}
+
+/* default colors applied dynamically; we keep placeholder */
+.folder-dot.green { background:#2e7d32; }
+.folder-dot.yellow { background:#b58900; }
+
+/* small responsive tweaks */
+@media (max-width:1200px) {
+  .albums-container { grid-template-columns: repeat(4,1fr); }
+}
+@media (max-width:800px) {
+  header { flex-wrap:wrap; gap:8px; }
+  .albums-container { grid-template-columns: repeat(2,1fr); }
+}
+
+/* hidden file input */
+#realFileInput { display:none; }
+
+#fileStatus {
+  position:fixed;
+  left:12px;
+  bottom:8px;
+  font-size:0.7rem;
+  color:#555;
+  pointer-events:none;
+  transition:color .2s ease;
+  z-index:60;
+}
+
+#fileStatus.status-updated {
+  color:#2e7d32;
+  font-weight:bold;
+}
+
+/* tooltip for folder options in select (some browsers won't show custom tooltip, but HTML title is set on option) */
+</style>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="cat-A">
+
+<header>
+  <div class="nav-links" id="navLinks">
+    <div class="nav-item active" data-page="DB"><div class="circle"></div><span class="nav-text">MUSIC</span> <span class="count" id="countDB">(0)</span></div>
+    <div class="nav-item" data-page="NR"><div class="circle"></div><span class="nav-text">NEWS</span> <span class="count" id="countNR">(0)</span></div>
+    <div class="nav-item" data-page="FD"><div class="circle"></div><span class="nav-text">FOLDERS</span> <span class="count" id="countFD">(0)</span></div>
+    <div class="nav-item" data-page="CS"><div class="circle"></div><span class="nav-text">SOON</span> <span class="count" id="countCS">(0)</span></div>
+  </div>
+
+  <div class="header-controls">
+    <button id="updateBtn">AKTUALIZUJ</button>
+
+     <!-- single XLSX button -->
+    <input id="realFileInput" type="file" accept=".xlsx" />
+    <button id="xlsxBtn">XLSX</button>
+
+      <div style="display:flex;align-items:center;">
+        <select id="folderSelect" title="Wybierz folder (widok FOLDERS)">
+        <option value="__all__">wszystkie</option>
+      </select>
+      <div class="folder-controls" style="margin-left:6px;">
+        <button id="newFolderBtn">+</button>
+        <button id="editFolderBtn" class="edit">E</button>
+        <button id="deleteFolderBtn" class="delete">-</button>
+        <button id="exportFolderBtn" class="export">⇩</button>
+      </div>
+    </div>
+
+    <input type="date" id="dateFrom" title="Data od" />
+    <input type="date" id="dateTo" title="Data do" />
+
+    <button id="labelFilterBtn">LABEL</button>
+  </div>
+</header>
+
+<div id="label-filter-panel"></div>
+
+<main>
+  <div class="albums-container" id="albumsContainer"></div>
+
+  <div class="pagination">
+    <button id="prevBtn" disabled>Poprzedni</button>
+    <div class="pagination-info">
+      <span class="page-info" id="pageInfo">Strona 0 z 0</span>
+      <label for="pageSelect">
+        Idź do:
+        <select id="pageSelect" disabled></select>
+      </label>
+    </div>
+    <button id="nextBtn" disabled>Następny</button>
+  </div>
+</main>
+
+<div id="fileStatus"></div>
+
+<script>
+/* ======= Elementy DOM ======= */
+const albumsContainer = document.getElementById('albumsContainer');
+const realFileInput = document.getElementById('realFileInput');
+const xlsxBtn = document.getElementById('xlsxBtn');
+const updateBtn = document.getElementById('updateBtn');
+const folderSelect = document.getElementById('folderSelect');
+const dateFromInput = document.getElementById('dateFrom');
+const dateToInput = document.getElementById('dateTo');
+const labelFilterBtn = document.getElementById('labelFilterBtn');
+const labelFilterPanel = document.getElementById('label-filter-panel');
+const newFolderBtn = document.getElementById('newFolderBtn');
+const deleteFolderBtn = document.getElementById('deleteFolderBtn');
+const exportFolderBtn = document.getElementById('exportFolderBtn');
+const editFolderBtn = document.getElementById('editFolderBtn');
+const fileStatusEl = document.getElementById('fileStatus');
+
+const navItems = Array.from(document.querySelectorAll('.nav-item'));
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const pageInfo = document.getElementById('pageInfo');
+const pageSelect = document.getElementById('pageSelect');
+
+let records = [];
+let currentFileHandle = null;
+let currentFileName = '';
+let currentFileTimestamp = '';
+let currentSheetName = '';
+let statusTimeout = null;
+let foldersList = new Set(['brak']);
+let selectedLabels = new Set();
+
+clearFileStatus();
+let hierarchy = [
+"01A - ECM New Series","02A - Deutsche Grammophon (DG)","03A - Chandos","04A - Sony Classical",
+"05A - Decca Music Group Ltd.","06A - Harmonia mundi","07A - Alpha Classics","08A - PENTATONE",
+"09A - Channel Classics","10B - Hyperion","11B - BIS","12B - Warner Classics / Erato",
+"13B - Delphian Records","14B - Lawo Classics","15B - Naxos","16B - Signum Records",
+"17B - LSO Live","18B - Berlin Classics","19C - Aparté","20C - Orchid Classics",
+"21C - Fuga Libera","22C - Ondine","23C - Evidence Classics","24C - Navona","25C - Ricercar",
+"26C - Arcana","27C - Nonesuch","28C - Linn Records","29C - AVIE Records","30C - Naive",
+"31C - Rubicon","32C - Mirare","33C - CPO","34C - Brilliant Classics","35C - Capriccio",
+"36C - BR-Klassik","37C - Resonus Classics","38C - Onyx Classics","39C - First Hand Records",
+"40C - Piano Classics","41C - Hänssler CLASSIC","42C - Grand Piano","43C - Bright Shiny Things"
+];
+const labelMap = {};
+hierarchy.forEach(l=>{
+  const [code,name]=l.split(" - ");
+  labelMap[name.trim()]=code;
+});
+
+function getLabelOrderCode(label){
+  const code = labelMap[label];
+  return code ? parseInt(code, 10) : 999;
+}
+
+function compareByReleaseDesc(a,b){
+  const diff = (b.release_date||0) - (a.release_date||0);
+  if(diff !== 0) return diff;
+  const labelDiff = getLabelOrderCode(a.label) - getLabelOrderCode(b.label);
+  if(labelDiff !== 0) return labelDiff;
+  return (a.title||'').localeCompare(b.title||'', 'pl', { sensitivity:'base' });
+}
+
+function compareByAddedDesc(a,b){
+  const diff = (b.added_ts||0) - (a.added_ts||0);
+  if(diff !== 0) return diff;
+  return compareByReleaseDesc(a,b);
+}
+
+const albumsPerPage = 12;
+let currentCategory = 'DB';
+let currentPage = 0;
+let categorized = { DB:[], NR:[], FD:[], CS:[] };
+
+function findRecordForAlbum(album){
+  if(!album) return null;
+  if(records.includes(album)) return album;
+  if(album.link){
+    const match = records.find(r => r.link === album.link);
+    if(match) return match;
+  }
+  return records.find(r => r === album) || null;
+}
+
+function syncRecord(album, updates){
+  const rec = findRecordForAlbum(album);
+  if(!rec || !updates) return;
+  Object.assign(rec, updates);
+}
+
+function getCurrentList(){
+  let list = categorized[currentCategory] || [];
+
+  if(currentCategory==='FD'){
+    if(folderSelect.value !== '__all__'){
+      const fld = folderSelect.value;
+      list = records
+        .filter(r => (r.folder || 'brak') === fld)
+        .map(rec=>{
+          if(typeof rec.added_ts !== 'number'){
+            const info = parseAddedField(rec.added);
+            rec.added = info.text;
+            rec.added_ts = info.ts;
+          }
+          return rec;
+        })
+        .sort(compareByAddedDesc);
+    } else {
+      list = categorized.FD || [];
+    }
+  }
+
+  return list;
+}
+
+/* ======= Helpers: daty i status pliku ======= */
+function formatAddedString(date){
+  const pad = n=>String(n).padStart(2,'0');
+  return `${pad(date.getDate())}.${pad(date.getMonth()+1)}.${date.getFullYear()}-${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function formatStatusDate(date){
+  const pad = n=>String(n).padStart(2,'0');
+  return `${pad(date.getDate())}.${pad(date.getMonth()+1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function parseAddedField(value){
+  if(value === undefined || value === null || value === '') return { text:'', ts:0 };
+  if(typeof value === 'number' && XLSX?.SSF?.parse_date_code){
+    const decoded = XLSX.SSF.parse_date_code(value);
+    if(decoded){
+      const dt = new Date(decoded.y, (decoded.m||1)-1, decoded.d||1, decoded.H||0, decoded.M||0, Math.floor(decoded.S||0));
+      if(!Number.isNaN(dt.getTime())){
+        return { text: formatAddedString(dt), ts: dt.getTime() };
+      }
+    }
+  }
+  if(typeof value === 'string'){
+    const trimmed = value.trim();
+    if(!trimmed) return { text:'', ts:0 };
+    const match = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})[-\s](\d{2}):(\d{2}):(\d{2})$/);
+    if(match){
+      const dt = new Date(Number(match[3]), Number(match[2])-1, Number(match[1]), Number(match[4]), Number(match[5]), Number(match[6]));
+      if(!Number.isNaN(dt.getTime())){
+        return { text: formatAddedString(dt), ts: dt.getTime() };
+      }
+    }
+    const parsed = new Date(trimmed);
+    if(!Number.isNaN(parsed.getTime())){
+      return { text: formatAddedString(parsed), ts: parsed.getTime() };
+    }
+    return { text: trimmed, ts:0 };
+  }
+  return { text:'', ts:0 };
+}
+
+function parseReleaseDateValue(value){
+  if(value === undefined || value === null || value === '') return 0;
+  if(typeof value === 'number'){
+    if(value > 1000000000000) return Math.floor(value/1000);
+    if(value > 1000000000) return Math.floor(value);
+    if(XLSX?.SSF?.parse_date_code){
+      const decoded = XLSX.SSF.parse_date_code(value);
+      if(decoded){
+        const dt = new Date(decoded.y, (decoded.m||1)-1, decoded.d||1, decoded.H||0, decoded.M||0, Math.floor(decoded.S||0));
+        if(!Number.isNaN(dt.getTime())){
+          return Math.floor(dt.getTime()/1000);
+        }
+      }
+    }
+    return 0;
+  }
+  if(typeof value === 'string'){
+    const trimmed = value.trim();
+    if(!trimmed) return 0;
+    if(/^-?\d+$/.test(trimmed)){
+      const num = parseInt(trimmed,10);
+      if(num > 1000000000000) return Math.floor(num/1000);
+      return num;
+    }
+    const parsed = new Date(trimmed);
+    if(!Number.isNaN(parsed.getTime())){
+      return Math.floor(parsed.getTime()/1000);
+    }
+  }
+  return 0;
+}
+
+function baseStatusText(){
+  if(!currentFileName) return '';
+  return currentFileTimestamp ? `${currentFileName} ${currentFileTimestamp}` : currentFileName;
+}
+
+function refreshFileStatus(){
+  if(!fileStatusEl) return;
+  clearTimeout(statusTimeout);
+  statusTimeout = null;
+  fileStatusEl.classList.remove('status-updated');
+  fileStatusEl.textContent = baseStatusText();
+}
+
+function flashFileUpdated(){
+  if(!fileStatusEl) return;
+  clearTimeout(statusTimeout);
+  fileStatusEl.classList.add('status-updated');
+  fileStatusEl.textContent = 'ZAKTUALIZOWANO';
+  statusTimeout = setTimeout(()=>{
+    fileStatusEl.classList.remove('status-updated');
+    fileStatusEl.textContent = baseStatusText();
+  }, 2000);
+}
+
+function clearFileStatus(){
+  if(!fileStatusEl) return;
+  clearTimeout(statusTimeout);
+  statusTimeout = null;
+  fileStatusEl.classList.remove('status-updated');
+  fileStatusEl.textContent = '';
+}
+
+async function loadWorkbookFromFile(file){
+  if(!file) return;
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    currentSheetName = workbook.SheetNames[0] || 'Sheet1';
+    const sheet = workbook.Sheets[currentSheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    records = rows.map(row=>{
+      const selectorRaw = (row.SELECTOR ?? row.SETECTOR ?? 'N');
+      const selector = String(selectorRaw || 'N').trim() || 'N';
+      const folder = String(row.FOLDER ?? 'brak').trim() || 'brak';
+      const addedInfo = parseAddedField(row.ADDED);
+      const releaseDate = parseReleaseDateValue(row.RELEASE_DATE);
+      return {
+        selector,
+        origSelector: selector,
+        folder,
+        added: addedInfo.text,
+        added_ts: addedInfo.ts,
+        label: String(row.LABEL ?? ''),
+        link: String(row.LINK ?? ''),
+        picture: String(row.PICTURE ?? ''),
+        artist: String(row.ARTIST ?? ''),
+        title: String(row.TITLE ?? ''),
+        duration: Number(row.DURATION) || 0,
+        release_date: releaseDate,
+        release_original: row.RELEASE_DATE
+      };
+    });
+    foldersList = new Set(['brak']);
+    records.forEach(r=>{ if(r.folder && r.folder.trim()) foldersList.add(r.folder); });
+    rebuildFolderSelect();
+    buildLabelFilterPanel();
+    currentPage = 0;
+    processAndRender();
+    alert(`✅ Załadowano ${records.length} rekordów z pliku XLSX`);
+  } catch(err){
+    console.error(err);
+    alert('❌ Wystąpił problem podczas wczytywania pliku XLSX: ' + (err?.message || err));
+  }
+}
+
+/* ======= Wczytywanie pliku XLSX ======= */
+xlsxBtn.addEventListener('click', async ()=>{
+  if(window.showOpenFilePicker){
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [
+          {
+            description: 'Pliki Excel',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+          }
+        ]
+      });
+      if(!handle) return;
+      currentFileHandle = handle;
+      const file = await handle.getFile();
+      currentFileName = handle.name || file.name || 'data.xlsx';
+      currentFileTimestamp = formatStatusDate(new Date(file.lastModified || Date.now()));
+      refreshFileStatus();
+      await loadWorkbookFromFile(file);
+    } catch(err){
+      if(err?.name === 'AbortError') return;
+      console.error(err);
+      alert('Nie udało się wczytać pliku XLSX: ' + (err?.message || err));
+    }
+  } else {
+    realFileInput.click();
+  }
+});
+
+realFileInput.addEventListener('change', async e=>{
+  const file = e.target.files?.[0];
+  if(!file) return;
+  currentFileHandle = null;
+  currentFileName = file.name || 'data.xlsx';
+  currentFileTimestamp = formatStatusDate(new Date(file.lastModified || Date.now()));
+  refreshFileStatus();
+  await loadWorkbookFromFile(file);
+  realFileInput.value = '';
+});
+
+/* ======= Folder counts and rebuild ======= */
+function getFolderCounts(){
+  const map = {};
+  foldersList.forEach(f => map[f] = 0);
+  records.forEach(r => {
+    const fld = (r.folder && r.folder.trim()) ? r.folder : 'brak';
+    if(!(fld in map)) map[fld]=0;
+    map[fld]++;
+  });
+  return map;
+}
+
+/* truncate helper: show up to n chars, add ellipsis if longer */
+function truncateName(name, n){
+  if(!name) return '';
+  if(name.length <= n) return name;
+  return name.slice(0,n) + '…';
+}
+
+/* rebuild folder select while preserving selection if possible */
+function rebuildFolderSelect(){
+  const prev = folderSelect.value;
+  const counts = getFolderCounts();
+  folderSelect.innerHTML = '';
+  const allOpt = document.createElement('option');
+  allOpt.value='__all__';
+  allOpt.textContent = 'wszystkie';
+  allOpt.title = 'Pokaż wszystkie';
+  folderSelect.appendChild(allOpt);
+
+  // build sorted folder list: show 'brak' after 'wszystkie', then alphabetical (locale pl)
+  const others = Array.from(foldersList).filter(f=>f!=='brak').sort((a,b)=>a.localeCompare(b,'pl'));
+  const full = ['brak', ...others];
+
+  full.forEach(fld=>{
+    const opt = document.createElement('option');
+    opt.value = fld;
+    const disp = fld === 'brak' ? 'brak' : (fld);
+    const truncated = (disp.length > 15) ? truncateName(disp, 15) : disp;
+    const count = counts[fld] || 0;
+    opt.textContent = `${truncated} (${count})`;
+    opt.title = fld; // tooltip shows full name
+    folderSelect.appendChild(opt);
+  });
+
+  // preserve selection if possible
+  if(prev && Array.from(folderSelect.options).some(o=>o.value===prev)){
+    folderSelect.value = prev;
+  } else {
+    // if previous not present, keep __all__
+    folderSelect.value = '__all__';
+  }
+}
+
+/* ======= Label filter panel ======= */
+function buildLabelFilterPanel(){
+  labelFilterPanel.innerHTML = '<strong>Wybierz wytwórnie:</strong><div style="height:8px"></div>';
+  selectedLabels = new Set();
+  hierarchy.forEach(l=>{
+    const [,name] = l.split(' - ');
+    const id = 'lblchk_'+name.replace(/\s+/g,'_').replace(/[^\w\-]/g,'');
+    const div = document.createElement('div');
+    div.style.marginBottom='6px';
+    const cb = document.createElement('input'); cb.type='checkbox'; cb.id=id; cb.value=name; cb.checked=true;
+    cb.addEventListener('change', ()=>{
+      if(cb.checked) selectedLabels.add(name); else selectedLabels.delete(name);
+      processAndRender();
+    });
+    const lbl = document.createElement('label'); lbl.htmlFor=id; lbl.style.marginLeft='6px'; lbl.textContent=name;
+    div.appendChild(cb); div.appendChild(lbl);
+    labelFilterPanel.appendChild(div);
+    selectedLabels.add(name);
+  });
+  const tools = document.createElement('div'); tools.style.marginTop='8px';
+  const allBtn = document.createElement('button'); allBtn.textContent='Wszystkie'; allBtn.style.marginRight='6px';
+  const noneBtn = document.createElement('button'); noneBtn.textContent='Brak';
+  allBtn.onclick = ()=>{ Array.from(labelFilterPanel.querySelectorAll('input[type=checkbox]')).forEach(ch=>{ ch.checked=true; selectedLabels.add(ch.value); }); processAndRender(); };
+  noneBtn.onclick = ()=>{ Array.from(labelFilterPanel.querySelectorAll('input[type=checkbox]')).forEach(ch=>{ ch.checked=false; selectedLabels.delete(ch.value); }); processAndRender(); };
+  tools.appendChild(allBtn); tools.appendChild(noneBtn);
+  labelFilterPanel.appendChild(tools);
+}
+
+labelFilterBtn.addEventListener('click', ()=>{
+  labelFilterPanel.style.display = labelFilterPanel.style.display === 'block' ? 'none' : 'block';
+});
+document.addEventListener('click', (e)=>{
+  if(!labelFilterPanel.contains(e.target) && e.target!==labelFilterBtn) labelFilterPanel.style.display='none';
+});
+
+/* ======= Core processing and rendering ======= */
+function processAndRender(){
+  categorized = { DB:[], NR:[], FD:[], CS:[] };
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()/1000;
+  const dateFrom = dateFromInput.value ? new Date(dateFromInput.value).getTime()/1000 : null;
+  const dateTo = dateToInput.value ? (new Date(dateToInput.value).getTime()/1000 + 86399) : null;
+
+  records.forEach(rec=>{
+    // filtr etykiet
+    if(selectedLabels.size && !selectedLabels.has(rec.label)) return;
+    // filtr dat
+    if(dateFrom && rec.release_date && rec.release_date<dateFrom) return;
+    if(dateTo && rec.release_date && rec.release_date>dateTo) return;
+
+    const alb = rec; // używamy oryginału, bez kopiowania
+    alb._durationNum = rec.duration;
+    if(typeof alb.added_ts !== 'number'){
+      const info = parseAddedField(alb.added);
+      alb.added = info.text;
+      alb.added_ts = info.ts;
+    }
+
+    // Coming Soon: albumy < 30 minut
+    if(alb._durationNum < 1800) categorized.CS.push(alb);
+
+    // New Releases: ostatnie 7 dni
+    const diffDays = alb.release_date ? Math.floor((todayStart - alb.release_date)/86400) : 9999;
+    if(alb.release_date && diffDays >= 0 && diffDays <= 6) categorized.NR.push(alb);
+
+    // Folder view collects albums przypisane do konkretnych folderów
+    if(alb.folder && alb.folder !== 'brak') categorized.FD.push(alb);
+
+    // DB (wszystkie)
+    categorized.DB.push(alb);
+    // collect folders
+    if(alb.folder && alb.folder.trim()) foldersList.add(alb.folder);
+  });
+
+  // Wykluczamy NR i CS z DB
+  const excludeIds = new Set();
+    categorized.NR.forEach(a=>excludeIds.add(a.link));
+  categorized.CS.forEach(a=>excludeIds.add(a.link));
+  categorized.DB = categorized.DB.filter(a=>!excludeIds.has(a.link));
+
+  categorized.DB.sort(compareByReleaseDesc);
+  categorized.NR.sort(compareByReleaseDesc);
+  categorized.FD.sort(compareByAddedDesc);
+  categorized.CS.sort(compareByReleaseDesc);
+
+  document.getElementById('countDB').textContent = `(${categorized.DB.length})`;
+  document.getElementById('countNR').textContent = `(${categorized.NR.length})`;
+  document.getElementById('countFD').textContent = `(${categorized.FD.length})`;
+  document.getElementById('countCS').textContent = `(${categorized.CS.length})`;
+
+  rebuildFolderSelect();
+  renderAlbumsPage();
+}
+
+function renderCategory(cat){
+  currentCategory = cat; currentPage=0;
+  document.body.classList.remove('cat-A','cat-B','cat-C','cat-D');
+  if(cat==='NR') document.body.classList.add('cat-A');
+  else if(cat==='FD') document.body.classList.add('cat-B');
+  else if(cat==='DB') document.body.classList.add('cat-C');
+  else if(cat==='CS') document.body.classList.add('cat-D');
+  updateNavActive(cat);
+  renderAlbumsPage();
+}
+
+function updateNavActive(cat){
+  navItems.forEach(it=>{
+    it.classList.remove('active');
+    if(it.dataset.page===cat) it.classList.add('active');
+  });
+}
+
+function renderAlbumsPage(){
+  const list = getCurrentList();
+
+  const total = list.length;
+  const totalPages = total ? Math.ceil(total / albumsPerPage) : 0;
+
+  if(totalPages === 0) {
+    currentPage = 0;
+  } else {
+    if(currentPage >= totalPages) currentPage = totalPages - 1;
+    if(currentPage < 0) currentPage = 0;
+  }
+
+  const start = currentPage * albumsPerPage;
+  const end = start + albumsPerPage;
+  const pageItems = list.slice(start, end);
+
+  albumsContainer.innerHTML = '';
+
+  pageItems.forEach(album=>{
+    const a = document.createElement('a');
+    a.href = album.link || '#';
+    a.target = '_blank';
+    a.className = 'album-card';
+    a.title = `${album.title} — ${album.artist}`;
+
+    const img = document.createElement('img');
+    img.className = 'album-cover';
+    img.src = album.picture || '';
+    if(album.selector==='X') img.classList.add('grayscale');
+
+    const info = document.createElement('div');
+    info.className = 'album-info';
+    const t = document.createElement('div'); t.className='album-title';
+
+    // folder dot if album is in a folder (not 'brak'); color depends on folder name starting with LIKE:
+    if(album.folder && album.folder !== 'brak') {
+      const dot = document.createElement('span'); dot.className='folder-dot';
+      if((album.folder||'').startsWith('LIKE:')) dot.classList.add('yellow'); else dot.classList.add('green');
+      t.appendChild(dot);
+    }
+
+    const titleText = document.createElement('span');
+    titleText.style.minWidth='0';
+    titleText.textContent = album.title;
+    t.appendChild(titleText);
+
+    const ar = document.createElement('div'); ar.className='album-artist'; ar.textContent = album.artist;
+   const m = document.createElement('div'); m.className='album-meta';
+    const metaParts = [];
+    if(album.release_date){
+      const d = new Date(album.release_date*1000);
+      const dateStr = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+      metaParts.push(dateStr);
+    }
+    const dur = formatDuration(album.duration);
+    if(dur !== 'brak') metaParts.push(dur);
+    if(album.folder && album.folder !== 'brak' && album.added){
+      metaParts.push(`dodano ${album.added}`);
+    }
+    m.textContent = metaParts.length ? metaParts.join(' • ') : 'brak danych';
+    info.appendChild(t); info.appendChild(ar); info.appendChild(m);
+
+
+    const code = labelMap[album.label] || '00A';
+    const icon = document.createElement('img');
+    icon.className = 'album-label-icon';
+    icon.src = `${code}.svg`;
+    icon.alt = album.label;
+    icon.title = album.label;
+    icon.addEventListener('click', ev=>{
+      ev.preventDefault(); ev.stopPropagation();
+      cycleSelector(album,img,a);
+    });
+
+    a.addEventListener('mouseenter', ()=>{ if(album.selector==='X') img.classList.remove('grayscale'); });
+    a.addEventListener('mouseleave', ()=>{ if(album.selector==='X') img.classList.add('grayscale'); });
+
+    applySelectorColorToCard(a, album.selector);
+
+    // folder-assign via SHIFT + left click on the card
+    a.addEventListener('click', ev=>{
+      // only act on shift without ctrl/meta and explicit primary button
+      if(ev.shiftKey && !ev.ctrlKey && !ev.metaKey && ev.button === 0){
+        ev.preventDefault();
+        if(folderSelect.value && folderSelect.value !== '__all__'){
+          const targetFolder = folderSelect.value;
+          const prevFolder = album.folder || 'brak';
+          if(prevFolder === targetFolder) {
+            return;
+          }
+          const now = new Date();
+          const addedStr = formatAddedString(now);
+          album.folder = targetFolder;
+          album.added = addedStr;
+          album.added_ts = now.getTime();
+          syncRecord(album, { folder: targetFolder, added: addedStr, added_ts: album.added_ts });
+          foldersList.add(targetFolder);
+          processAndRender();
+        }
+      }
+    });
+
+    // SHIFT + right click (context menu) removes album from its folder
+    a.addEventListener('contextmenu', ev=>{
+      if(ev.shiftKey && !ev.ctrlKey && !ev.metaKey && ev.button === 2){
+        ev.preventDefault();
+        if(album.folder && album.folder !== 'brak'){
+          album.folder = 'brak';
+          album.added = '';
+          album.added_ts = 0;
+          syncRecord(album, { folder: 'brak', added: '', added_ts: 0 });
+          processAndRender();
+        }
+        return;
+      }
+      // otherwise, do not preventDefault here — let other handlers handle contextmenu on child elements
+    });
+
+     a.appendChild(img); a.appendChild(info); a.appendChild(icon);
+    albumsContainer.appendChild(a);
+  });
+
+  if(pageInfo){
+    pageInfo.textContent = totalPages ? `Strona ${currentPage + 1} z ${totalPages}` : 'Strona 0 z 0';
+  }
+
+  if(pageSelect){
+    pageSelect.innerHTML = '';
+    if(totalPages > 0){
+      for(let i=0; i<totalPages; i++){
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i + 1;
+        if(i === currentPage) opt.selected = true;
+        pageSelect.appendChild(opt);
+      }
+      pageSelect.disabled = false;
+      pageSelect.value = String(currentPage);
+    } else {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '—';
+      pageSelect.appendChild(opt);
+      pageSelect.disabled = true;
+      pageSelect.value = '';
+    }
+  }
+
+  prevBtn.disabled = currentPage === 0 || totalPages === 0;
+  nextBtn.disabled = (end >= list.length) || totalPages === 0;
+}
+
+/* ======= Pagination & Nav ======= */
+prevBtn.addEventListener('click', ()=>{ if(currentPage>0){ currentPage--; renderAlbumsPage(); }});
+nextBtn.addEventListener('click', ()=>{
+  const list = getCurrentList();
+  if((currentPage+1)*albumsPerPage<list.length){ currentPage++; renderAlbumsPage(); }
+});
+
+if(pageSelect){
+  pageSelect.addEventListener('change', ()=>{
+    const pageIndex = parseInt(pageSelect.value, 10);
+    if(Number.isNaN(pageIndex) || pageIndex === currentPage) return;
+    currentPage = pageIndex;
+    renderAlbumsPage();
+  });
+}
+
+navItems.forEach(it=>{ it.addEventListener('click', ()=>{ renderCategory(it.dataset.page); }); });
+
+folderSelect.addEventListener('change', ()=>{
+  if(currentCategory !== 'FD'){
+    renderCategory('FD');
+  } else {
+    currentPage = 0;
+    renderAlbumsPage();
+  }
+});
+
+/* ======= Selector cycling ======= */
+function cycleSelector(album, imgEl, cardEl){
+  const current = album.selector || 'N';
+  const order = ['N','X','F'];
+  const next = order[(order.indexOf(current)+1)%order.length];
+  album.selector = next;
+  syncRecord(album, { selector: next });
+  if(next==='X') imgEl.classList.add('grayscale'); else imgEl.classList.remove('grayscale');
+  applySelectorColorToCard(cardEl,next);
+  processAndRender();
+}
+
+function applySelectorColorToCard(card, selector){
+  let borderColor = 'rgba(200,0,0,0.25)';
+  let hoverColor = 'rgba(200,0,0,1)';
+  let infoBg = '#fff';
+
+  if(selector==='X'){
+    borderColor = 'rgba(100,100,100,0.4)';
+    hoverColor = 'rgba(100,100,100,1)';
+    infoBg = 'rgba(100,100,100,0.4)';
+  } else if(selector==='F'){
+    borderColor = 'rgba(0,150,136,0.4)';
+    hoverColor = 'rgba(0,150,136,1)';
+    infoBg = 'rgba(0,150,136,0.4)';
+  }
+
+  card.style.setProperty('--card-border-color', borderColor);
+  card.style.setProperty('--card-hover-color', hoverColor);
+  card.style.setProperty('--album-info-bg', infoBg);
+}
+
+/* ======= Duration formatting ======= */
+function formatDuration(seconds){
+  if(!seconds || seconds<=0) return 'brak';
+  const m = Math.floor(seconds/60);
+  const s = seconds%60;
+  return `${m}m ${s.toString().padStart(2,'0')}s`;
+}
+
+function buildWorkbook(){
+  const headers = ['SELECTOR','FOLDER','ADDED','LABEL','LINK','PICTURE','ARTIST','TITLE','DURATION','RELEASE_DATE'];
+  const data = records.map(rec=>{
+    const releaseValue = (rec.release_original !== undefined && rec.release_original !== null && rec.release_original !== '')
+      ? rec.release_original
+      : (rec.release_date || 0);
+    return {
+      SELECTOR: rec.selector || rec.origSelector || 'N',
+      FOLDER: rec.folder || 'brak',
+      ADDED: rec.added || '',
+      LABEL: rec.label || '',
+      LINK: rec.link || '',
+      PICTURE: rec.picture || '',
+      ARTIST: rec.artist || '',
+      TITLE: rec.title || '',
+      DURATION: rec.duration || 0,
+      RELEASE_DATE: releaseValue
+    };
+  });
+  const worksheet = XLSX.utils.json_to_sheet(data, { header: headers, skipHeader: false });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, currentSheetName || 'Sheet1');
+  return workbook;
+}
+
+async function writeWorkbookToHandle(handle, arrayBuffer){
+  const writable = await handle.createWritable();
+  await writable.write(arrayBuffer);
+  await writable.close();
+}
+
+/* ======= Update button (zapis danych do pliku XLSX) ======= */
+updateBtn.addEventListener('click', async ()=>{
+  if(!records.length){
+    alert('Brak danych do zapisania. Najpierw wczytaj plik XLSX.');
+    return;
+  }
+  try {
+    const workbook = buildWorkbook();
+    const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    let saved = false;
+
+    if(currentFileHandle && currentFileHandle.createWritable){
+      await writeWorkbookToHandle(currentFileHandle, wbout);
+      saved = true;
+    } else if(window.showSaveFilePicker){
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: currentFileName || 'DANE.xlsx',
+          types: [
+            {
+              description: 'Pliki Excel',
+              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+            }
+          ]
+        });
+        if(handle){
+          await writeWorkbookToHandle(handle, wbout);
+          currentFileHandle = handle;
+          currentFileName = handle.name || currentFileName || 'DANE.xlsx';
+          saved = true;
+        }
+      } catch(err){
+        if(err?.name === 'AbortError') return;
+        throw err;
+      }
+    }
+
+    if(!saved){
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = currentFileName || 'DANE_UPDATED.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      alert('Przeglądarka nie obsługuje bezpośredniego zapisu — pobrano zaktualizowany plik XLSX.');
+    } else {
+      const nameInfo = currentFileName ? ` ${currentFileName}` : '';
+      alert(`✅ Zapisano zmiany w pliku${nameInfo}`);
+    }
+
+    currentFileTimestamp = formatStatusDate(new Date());
+    refreshFileStatus();
+    flashFileUpdated();
+  } catch(err){
+    console.error(err);
+    alert('❌ Nie udało się zapisać pliku XLSX: ' + (err?.message || err));
+  }
+});
+
+/* ======= Folder creation / validation / edit / delete / export ======= */
+
+function isValidFolderName(name){
+  if(typeof name !== 'string') return false;
+  name = name.trim();
+  if(name.length === 0) return false;
+  if(name.length > 50) return false;
+  if(/\s/.test(name)) return false; // no spaces allowed
+  return true;
+}
+
+newFolderBtn.addEventListener('click', ()=>{
+  if(foldersList.size >= 100){
+    alert('Osiągnięto limit 100 folderów — nie można utworzyć nowego folderu.');
+    return;
+  }
+  const raw = prompt('Podaj nazwę nowego folderu (max 50 znaków, bez spacji):');
+  if(raw === null) return; // cancel
+  const name = raw.trim();
+  if(!isValidFolderName(name)){
+    alert('Nieprawidłowa nazwa folderu. Zasady: brak spacji, max 50 znaków. Możliwe polskie litery.');
+    return;
+  }
+  if(foldersList.has(name)){
+    alert('Folder o takiej nazwie już istnieje.');
+    return;
+  }
+  foldersList.add(name);
+  rebuildFolderSelect();
+  folderSelect.value = name;
+  alert(`Utworzono folder: ${name}`);
+  if(currentCategory==='FD') renderAlbumsPage();
+});
+
+editFolderBtn.addEventListener('click', ()=>{
+  const selected = folderSelect.value;
+  if(!selected || selected === '__all__'){
+    alert('Wybierz najpierw konkretny folder do edycji.');
+    return;
+  }
+  if(selected === 'brak'){
+    alert('Nie można edytować folderu "brak".');
+    return;
+  }
+  const raw = prompt('Nowa nazwa folderu (max 50 znaków, bez spacji):', selected);
+  if(raw === null) return;
+  const name = raw.trim();
+  if(!isValidFolderName(name)){
+    alert('Nieprawidłowa nazwa folderu. Zasady: brak spacji, max 50 znaków.');
+    return;
+  }
+  if(name === selected) return; // no change
+  if(foldersList.has(name)){
+    alert('Folder o takiej nazwie już istnieje.');
+    return;
+  }
+  // rename in set: remove old, add new
+  foldersList.delete(selected);
+  foldersList.add(name);
+  // update records that had old name
+  records.forEach(r=>{ if(r.folder === selected) r.folder = name; });
+  rebuildFolderSelect();
+  folderSelect.value = name;
+  alert(`Zmieniono nazwę folderu: ${selected} → ${name}`);
+  processAndRender();
+});
+
+deleteFolderBtn.addEventListener('click', ()=>{
+  const selected = folderSelect.value;
+  if(!selected || selected === '__all__'){
+    alert('Wybierz najpierw konkretny folder, który chcesz usunąć.');
+    return;
+  }
+  if(selected === 'brak'){
+    alert('Nie można usunąć folderu "brak".');
+    return;
+  }
+  const ok = confirm(`Usunąć folder "${selected}"? Wszystkie albumy w tym folderze zostaną przeniesione do "brak". Potwierdzasz?`);
+  if(!ok) return;
+  // remove folder from set
+  foldersList.delete(selected);
+  // update records that had this folder
+  records.forEach(r=>{
+    if(r.folder === selected) r.folder = 'brak';
+  });
+  rebuildFolderSelect();
+  // keep selection as __all__ after removal
+  folderSelect.value = '__all__';
+  processAndRender();
+  alert(`Usunięto folder: ${selected}`);
+});
+
+exportFolderBtn.addEventListener('click', ()=>{
+  const selected = folderSelect.value;
+  if(!selected || selected === '__all__'){
+    alert('Wybierz najpierw konkretny folder do eksportu.');
+    return;
+  }
+  const links = records.filter(r=> (r.folder || 'brak') === selected && r.link).map(r=>r.link);
+  const content = links.join('\n');
+  const blob = new Blob([content], {type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  // ensure filename safe
+  const filename = `${selected}.txt`;
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  alert(`✅ Wyeksportowano ${links.length} linków do pliku ${filename}`);
+});
+
+/* ======= Date controls ======= */
+dateFromInput.addEventListener('change', processAndRender);
+dateToInput.addEventListener('change', processAndRender);
+
+/* ======= Empty state ======= */
+function showEmptyState(){
+  albumsContainer.innerHTML = `<div style="grid-column:1/-1;padding:30px;background:#fff;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.08);">Wczytaj plik XLSX (przycisk XLSX), aby rozpocząć pracę.<br>Wymagane kolumny: SELECTOR, FOLDER, ADDED, LABEL, LINK, PICTURE, ARTIST, TITLE, DURATION, RELEASE_DATE.</div>`;
+}
+showEmptyState();
+
+/* ======= Hover style injection ======= */
+(function injectHoverStyle(){
+  const css=document.createElement('style'); css.innerHTML=`.album-card:hover { border-color: var(--card-hover-color, rgba(200,0,0,0.85)); }`; document.head.appendChild(css);
+})();
+
+/* ======= Initial folder select build ======= */
+rebuildFolderSelect();
+buildLabelFilterPanel();
+renderCategory(currentCategory);
+
+</script>
+</body>
+</html>
