@@ -1,0 +1,235 @@
+🧩 1. Struktura i organizacja kodu
+🔴 Problem:
+
+Cały kod (HTML, CSS, JS) znajduje się w jednym pliku.
+Ponad tysiąc linii kodu miesza logikę UI, danych, komunikacji z API, walidacji i renderowania.
+
+✅ Jak poprawić:
+
+Rozdzielić warstwy:
+
+index.html → tylko layout i odwołania do plików.
+
+styles.css → cały CSS.
+
+app.js → główna logika (render, zdarzenia, UI).
+
+data.js → model danych, parsowanie XLSX, konwersje rekordów.
+
+api.js → komunikacja z backendem Flask.
+
+ui.js → funkcje obsługujące DOM (tworzenie kart, selectów itp.).
+
+Dzięki temu kod będzie łatwiejszy w debugowaniu i testowaniu (można testować np. convertRowToRecord() osobno).
+
+⚙️ 2. Brak modułowości / przestrzeni nazw
+🔴 Problem:
+
+Wszystkie zmienne globalne (records, foldersList, containersList, labelFilters, currentCategory, currentPage, itp.) są w globalnym zakresie.
+Łatwo przypadkiem coś nadpisać lub mieć konflikt z innym skryptem.
+
+✅ Jak poprawić:
+
+Zawinąć cały kod JS w moduł IIFE lub ES6 module:
+
+const App = (() => {
+    const state = { records: [], currentCategory: 'DB', ... };
+    function loadWorkbookFromFile(file) { ... }
+    return { init, state };
+})();
+
+
+lub po prostu dodać type="module" i eksportować/importować funkcje między plikami.
+
+🧠 3. Powtarzający się kod
+🔴 Przykłady:
+
+Sortowania (compareByReleaseDesc, compareByAddedDesc) mają bardzo podobną strukturę.
+
+Duplikowane budowanie folderSelect, containerSelect.
+
+Kilka funkcji (processAndRender, applyRecordsList, assignAlbumToFolder) robi bardzo podobne rzeczy na danych.
+
+✅ Jak poprawić:
+
+Wprowadzić helpery i klasy:
+
+class Album {
+    constructor(raw) { ... } // konwersja danych
+    assignFolder(folder) { ... }
+    toJSON() { ... }
+}
+
+
+Wspólne operacje (np. rebuild selectów) połączyć w jedną funkcję rebuildSelects(type).
+
+🎨 4. Manipulacja DOM w sposób nieefektywny
+🔴 Problem:
+
+renderAlbumsPage() usuwa i tworzy cały DOM od nowa przy każdej zmianie strony lub filtru.
+Dla większej liczby rekordów (np. 1000+) to będzie powolne.
+
+✅ Jak poprawić:
+
+Zamiast tego:
+
+użyć wirtualnego DOM (np. preact / lit-html / Vue),
+
+albo minimalnie: document.createDocumentFragment() i podmieniać tylko zmienione elementy.
+
+Dodać lazy loading / „infinite scroll” zamiast klasycznej paginacji.
+
+💾 5. Operacje na danych — brak spójności
+🔴 Problem:
+
+Wiele funkcji modyfikuje rekordy w miejscu, ale nie zawsze przez centralną funkcję (syncRecord).
+Zdarzenia (kliknięcia, edycja folderu) mogą powodować niespójne stany.
+
+✅ Jak poprawić:
+
+Wprowadzić jedno źródło prawdy (np. state.records).
+
+Wszystkie zmiany w rekordach przechodziłyby przez kontroler:
+
+updateRecord(id, changes) {
+    Object.assign(this.records[id], changes);
+    this.saveNeeded = true;
+}
+
+🔐 6. Brak walidacji danych przy wysyłce do API
+🔴 Problem:
+
+Przy update_xlsx wysyłany jest cały stan records, ale bez walidacji.
+Jeśli pola link lub folder są undefined, backend może mieć problem.
+
+✅ Jak poprawić:
+
+Przed wysyłką sprawdzać poprawność danych:
+
+const valid = records.every(r => r.link && r.folder);
+if (!valid) alert("Niektóre rekordy są niepoprawne");
+
+
+Wprowadzić schemat walidacji (np. zod, yup).
+
+📅 7. Przetwarzanie dat
+🔴 Problem:
+
+Konwersje dat (parseReleaseDateValue, parseAddedField) są poprawne, ale nieefektywne — wielokrotne tworzenie new Date() i string splitów.
+
+✅ Jak poprawić:
+
+Użyć biblioteki do dat, np. dayjs albo date-fns.
+
+Dzięki temu kod stanie się czytelniejszy:
+
+dayjs(releaseDate).format('YYYY-MM-DD')
+
+🧰 8. Interfejs użytkownika (UX)
+🔴 Utrudnienia:
+
+Dialogi prompt() i alert() są prymitywne.
+
+Kolory i layout są trudne do edycji.
+
+Brak zapamiętywania filtrów po odświeżeniu strony.
+
+✅ Jak poprawić:
+
+Zastąpić prompt() / alert() modalkami HTML (np. z Bootstrap / Tailwind / SweetAlert2).
+
+Zapis filtrów i ostatniego folderu do localStorage.
+
+Dodać mini pasek postępu przy ładowaniu XLSX.
+
+🧑‍💻 9. Komunikacja z backendem
+🔴 Problem:
+
+URL http://127.0.0.1:5000 jest na sztywno wpisany.
+
+Brak obsługi błędów sieciowych i retry.
+
+fetch nie ma timeoutu.
+
+✅ Jak poprawić:
+
+Wprowadzić konfigurację w jednym miejscu:
+
+const API_BASE = localStorage.getItem('apiBase') || 'http://127.0.0.1:5000';
+
+
+Napisać wrapper:
+
+async function apiPost(endpoint, data) {
+    const res = await fetch(`${API_BASE}/${endpoint}`, { ... });
+    if (!res.ok) throw new Error('Server error');
+    return res.json();
+}
+
+
+W razie błędu pokazywać ładny komunikat, nie alert().
+
+🪶 10. Styl i czytelność kodu
+🔴 Problem:
+
+Mieszane style: niekonsekwentne wcięcia, różne konwencje nazw (camelCase, snake_case).
+
+Długie funkcje (np. processAndRender robi kilkanaście rzeczy).
+
+✅ Jak poprawić:
+
+Przepisać długie funkcje na mniejsze:
+
+function processAndRender() {
+    categorizeRecords();
+    filterByDate();
+    renderAlbums();
+}
+
+
+Ujednolicić konwencje nazw (camelCase wszędzie).
+
+Włączyć ESLint + Prettier.
+
+⚡ 11. Możliwe ulepszenia funkcjonalne
+
+🟢 Dodać wyszukiwanie po nazwie/artyście.
+
+🟢 Dodać sortowanie (np. po dacie, wytwórni, długości albumu).
+
+🟢 Dodać tryb ciemny / jasny.
+
+🟢 Zastosować IndexedDB lub localStorage do cache rekordów — wtedy strona nie musi co chwilę pobierać XLSX.
+
+📈 12. Testowalność
+🔴 Problem:
+
+Kod jest nienadający się do testów jednostkowych — nie ma modularności ani czystych funkcji.
+
+✅ Jak poprawić:
+
+Przenieść logikę (np. konwersję rekordów, sortowanie) do osobnych modułów i testować w Node.js przez Jest lub Vitest:
+
+test("parseReleaseDateValue handles Excel dates", () => { ... });
+
+🧩 13. Drobne detale do poprawy
+
+Funkcja compareByReleaseDesc zakłada, że a.release_date istnieje — warto dodać ?? 0.
+
+alert() w wielu miejscach — zamienić na console.warn() lub ładny komunikat w UI.
+
+W assignAlbumToFolder — brak sprawdzenia, czy folder istnieje w folderMeta.
+
+W rebuildMetaStructures() — używane zagnieżdżone pętle Setów; można uprościć za pomocą Array.from() i map().
+
+🧭 14. Ogólna rekomendacja
+
+Jeśli chcesz dalej rozwijać ten projekt:
+
+Zrób refaktoryzację struktury (modularność).
+
+Dodaj stan aplikacji w jednym miejscu (state / store).
+
+Stopniowo wprowadź framework UI (np. React / Vue / Svelte) — wtedy renderowanie i interakcje staną się o wiele prostsze.
+
+Użyj Vite lub Parcel do budowania i hot-reloadu.
