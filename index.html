@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Qobuz – Album Browser</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script type="module" src="app.js" defer></script>
+  </head>
+  <body class="cat-A">
+    <header class="menu-header">
+      <div class="menu-strip nav-links" id="navLinks">
+        <button class="nav-item menu-chip active" data-page="DB">
+          <span class="menu-chip__inner">
+            <span class="menu-chip__title">MUSIC</span>
+            <span class="count" id="countDB">(0)</span>
+          </span>
+        </button>
+        <button class="nav-item menu-chip" data-page="NR">
+          <span class="menu-chip__inner">
+            <span class="menu-chip__title">NEWS</span>
+            <span class="count" id="countNR">(0)</span>
+          </span>
+        </button>
+        <button class="nav-item menu-chip" data-page="FD">
+          <span class="menu-chip__inner">
+            <span class="menu-chip__title">FOLDERS</span>
+          </span>
+        </button>
+        <button id="foldersRefreshBtn" class="menu-chip nav-refresh" title="Odśwież widok folderów">
+          <span class="menu-chip__inner">R</span>
+        </button>
+      </div>
+
+      <div class="menu-strip header-controls">
+        <button id="updateBtn" class="menu-chip action-primary">
+          <span class="menu-chip__inner">ZAPISZ</span>
+        </button>
+        <button
+          id="downloadFilteredBtn"
+          class="menu-chip action-secondary"
+          title="Eksportuj przefiltrowane albumy do pliku XLSX"
+        >
+          <span class="menu-chip__inner">D</span>
+        </button>
+        <div class="folder-area">
+          <div class="menu-select">
+            <select id="containerSelect" title="Wybierz kontener (widok FOLDERS)">
+              <option value="__all__">wszystkie kontenery</option>
+            </select>
+          </div>
+          <div class="menu-select">
+            <select id="folderSelect" title="Wybierz folder (widok FOLDERS)">
+              <option value="__all__">wszystkie</option>
+            </select>
+          </div>
+         <button id="optionsBtn" class="menu-chip action-secondary">
+          <span class="menu-chip__inner">OPCJE</span>
+        </button>
+        </div>
+        <button id="filterBtn" class="menu-chip filter-btn">
+          <span class="menu-chip__inner">FILTR</span>
+        </button>
+      </div>
+    </header>
+
+    <div id="filter-panel"></div>
+    <div id="options-panel"></div>
+
+    <main>
+      <div class="albums-container" id="albumsContainer"></div>
+      <div class="pagination">
+        <button id="prevBtn" disabled>Poprzedni</button>
+        <div class="pagination-info">
+          <span class="page-info" id="pageInfo">Strona 0 z 0</span>
+          <label for="pageSelect">
+            Idź do:
+            <select id="pageSelect" disabled></select>
+          </label>
+        </div>
+        <button id="nextBtn" disabled>Następny</button>
+      </div>
+    </main>
+
+    <div class="status-area">
+      <div id="progressContainer" class="progress-shell hidden">
+        <div class="progress-bar">
+          <div class="progress-fill"></div>
+        </div>
+        <div class="progress-label" id="progressLabel"></div>
+      </div>
+      <div id="fileStatus"></div>
+    </div>
+  </body>
+</html>
