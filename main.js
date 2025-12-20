@@ -1,0 +1,383 @@
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const path = require("path");
+const {
+  ensureSchema,
+  fetchRecords,
+  replaceRecords,
+  appendRecords,
+  TABLE_NAME,
+  resolvedConfig
+} = require("./backend/db");
+const XLSX = require("xlsx");
+const fs = require("fs");
+
+const SHEET_NAME = "MySQL";
+
+const DATA_PREFIXES = {
+  importDb: "music_database",
+  updateDb: "update_database"
+};
+
+function formatTimestampForFileName(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}_${pad(date.getHours())}-${pad(
+    date.getMinutes()
+  )}-${pad(date.getSeconds())}`;
+}
+
+function buildTimestampedName(prefix, extension = "xlsx") {
+  return `${prefix}_${formatTimestampForFileName()}.${extension}`;
+}
+
+async function findLatestDataFile(targetDir, prefix) {
+  const regex = new RegExp(
+    `^${prefix}_(\\d{2})-(\\d{2})-(\\d{4})_(\\d{2})-(\\d{2})-(\\d{2})\\.xlsx$`,
+    "i"
+  );
+  const entries = await fs.promises.readdir(targetDir, { withFileTypes: true });
+  const candidates = [];
+
+  for (const entry of entries) {
+    const match = entry.isFile() ? entry.name.match(regex) : null;
+    if (!match) continue;
+    const fullPath = path.join(targetDir, entry.name);
+    const stats = await fs.promises.stat(fullPath);
+    const [, day, month, year, hour, minute, second] = match;
+    const parsedDate = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    );
+    const stamp = Number.isFinite(parsedDate.getTime()) ? parsedDate.getTime() : stats.mtimeMs;
+    candidates.push({ name: entry.name, path: fullPath, timestamp: stamp });
+  }
+
+  candidates.sort((a, b) => b.timestamp - a.timestamp);
+  return candidates[0] || null;
+}
+
+async function resolveSourceFile({ directory, filePath, prefix }) {
+  const targetDir = directory || app.getAppPath() || __dirname;
+  await ensureDirectory(targetDir);
+
+  if (filePath) {
+    const normalized = path.resolve(filePath);
+    if (!fs.existsSync(normalized)) {
+      throw new Error(`Wybrany plik nie istnieje: ${normalized}`);
+    }
+    return { path: normalized, name: path.basename(normalized) };
+  }
+
+  const latest = await findLatestDataFile(targetDir, prefix);
+  if (!latest) {
+    throw new Error(`Brak pliku ${prefix}_DD-MM-RRRR_HH-MM-SS.xlsx w folderze ${targetDir}.`);
+  }
+  return { path: latest.path, name: latest.name };
+}
+
+async function ensureDirectory(dirPath) {
+  await fs.promises.mkdir(dirPath, { recursive: true });
+}
+let mainWindow;
+
+function buildExportSummary({ total, schemaMs, dbMs, xlsxMs, overallMs, fileName }) {
+  const lines = [
+    `✅ Eksport zakończony. Zapisano ${total} rekordów do pliku ${fileName}.`,
+    `⏱ Schemat bazy: ${(schemaMs / 1000).toFixed(2)} s`,
+    `⏱ Pobranie danych: ${(dbMs / 1000).toFixed(2)} s`,
+    `⏱ Tworzenie XLSX: ${(xlsxMs / 1000).toFixed(2)} s`,
+    `⏱ Całość: ${(overallMs / 1000).toFixed(2)} s`
+  ];
+  return lines.join("\n");
+}
+
+function buildImportSummary({
+  totalRows,
+  sheetName,
+  readMs,
+  dbMs,
+  overallMs,
+  sourceRows,
+  duplicates,
+  missingLink
+}) {
+  const lines = [
+    `✅ Import zakończony. Wstawiono ${totalRows} rekordów z arkusza "${sheetName}".`
+  ];
+
+  if (Number.isFinite(sourceRows)) lines.push(`📄 Wiersze w XLSX: ${sourceRows}`);
+  if (Number.isFinite(duplicates)) lines.push(`🟡 Duplikaty (LINK): ${duplicates}`);
+  if (Number.isFinite(missingLink)) lines.push(`🟠 Bez LINK: ${missingLink}`);
+
+  lines.push(
+    `⏱ Wczytanie XLSX: ${(readMs / 1000).toFixed(2)} s`,
+    `⏱ Operacje na bazie: ${(dbMs / 1000).toFixed(2)} s`,
+    `⏱ Całość: ${(overallMs / 1000).toFixed(2)} s`
+  );
+
+  return lines.join("\n");
+}
+
+async function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 1200,
+    minHeight: 720,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  mainWindow.maximize();
+
+  await mainWindow.loadFile(path.join(__dirname, "index.html"));
+}
+
+async function bootstrapDatabase() {
+  try {
+    await ensureSchema();
+  } catch (error) {
+    dialog.showErrorBox(
+      "Błąd połączenia z MySQL",
+      `Nie udało się przygotować bazy danych. Sprawdź konfigurację połączenia.\n\nSzczegóły: ${error.message}`
+    );
+    throw error;
+  }
+}
+
+function registerHandlers() {
+  ipcMain.handle("fetch-workbook", async () => {
+    const records = await fetchRecords();
+    return {
+      status: "ok",
+      file_name: `Baza MySQL – tabela '${TABLE_NAME}'`,
+      sheet_name: SHEET_NAME,
+      updated_at: Date.now(),
+      records
+    };
+  });
+
+  ipcMain.handle("update-workbook", async (_event, payload = {}) => {
+    const { records = [], sheetName = SHEET_NAME } = payload;
+    const count = await replaceRecords(records);
+    const timestamp = Date.now();
+    return {
+      status: "ok",
+      message: `✅ Zapisano ${count} rekordów w tabeli MySQL '${TABLE_NAME}'.`,
+      updated_at: timestamp,
+      sheet_name: sheetName,
+      file_name: `Baza MySQL – tabela '${TABLE_NAME}'`
+    };
+  });
+
+  ipcMain.handle("export-xlsx", async (_event, payload = {}) => {
+    const targetDir = payload?.directory || app.getAppPath() || __dirname;
+    await ensureDirectory(targetDir);
+    const fileName = buildTimestampedName(DATA_PREFIXES.importDb);
+    const dataFilePath = path.join(targetDir, fileName);
+
+    const overallStart = Date.now();
+    const schemaStart = Date.now();
+    await ensureSchema();
+    const schemaEnd = Date.now();
+
+    const dbStart = Date.now();
+    const records = await fetchRecords();
+    const dbEnd = Date.now();
+
+    const xlsxStart = Date.now();
+    const worksheet = XLSX.utils.json_to_sheet(records);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, SHEET_NAME);
+    XLSX.writeFile(workbook, dataFilePath);
+    const xlsxEnd = Date.now();
+
+    const overallEnd = Date.now();
+    const payloadResponse = {
+      status: "ok",
+      total: records.length,
+      filePath: dataFilePath,
+      fileName,
+      summary: buildExportSummary({
+        total: records.length,
+        schemaMs: schemaEnd - schemaStart,
+        dbMs: dbEnd - dbStart,
+        xlsxMs: xlsxEnd - xlsxStart,
+        overallMs: overallEnd - overallStart,
+        fileName
+      })
+    };
+    return payloadResponse;
+  });
+
+  ipcMain.handle("import-xlsx", async (_event, payload = {}) => {
+    const targetDir = payload?.directory || app.getAppPath() || __dirname;
+    await ensureDirectory(targetDir);
+
+    const source = await resolveSourceFile({
+      directory: targetDir,
+      filePath: payload?.filePath,
+      prefix: DATA_PREFIXES.importDb
+    });
+
+    const overallStart = Date.now();
+    const readStart = Date.now();
+    const workbook = XLSX.readFile(source.path);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    if (!worksheet) {
+      throw new Error(`Nie znaleziono arkusza w pliku XLSX (${sheetName}).`);
+    }
+    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+    const readEnd = Date.now();
+
+    await ensureSchema();
+    const dbStart = Date.now();
+    const total = await replaceRecords(rows);
+    const dbEnd = Date.now();
+
+    const overallEnd = Date.now();
+    const payloadResponse = {
+      status: "ok",
+      total,
+      sheetName,
+      summary: buildImportSummary({
+        totalRows: total,
+        sheetName,
+        readMs: readEnd - readStart,
+        dbMs: dbEnd - dbStart,
+        overallMs: overallEnd - overallStart
+      }),
+      fileName: source.name
+    };
+    return payloadResponse;
+  });
+
+  ipcMain.handle("import-news-xlsx", async (_event, payload = {}) => {
+    const targetDir = payload?.directory || app.getAppPath() || __dirname;
+    await ensureDirectory(targetDir);
+
+    const source = await resolveSourceFile({
+      directory: targetDir,
+      filePath: payload?.filePath,
+      prefix: DATA_PREFIXES.updateDb
+    });
+
+    const overallStart = Date.now();
+    const readStart = Date.now();
+    const workbook = XLSX.readFile(source.path);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    if (!worksheet) {
+      throw new Error(`Nie znaleziono arkusza w pliku XLSX (${sheetName}).`);
+    }
+    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+    const readEnd = Date.now();
+
+    await ensureSchema();
+    const dbStart = Date.now();
+    const stats = await appendRecords(rows);
+    const dbEnd = Date.now();
+
+    const inserted = Number(stats?.inserted ?? 0);
+    const duplicates = Number(stats?.duplicates ?? 0);
+    const missingLink = Number(stats?.missingLink ?? 0);
+    const sourceRows = Number(stats?.sourceRows ?? rows.length);
+    const overallEnd = Date.now();
+
+    const payloadResponse = {
+      status: "ok",
+      total: inserted,
+      duplicates,
+      missingLink,
+      sourceRows,
+      sheetName,
+      summary: buildImportSummary({
+        totalRows: inserted,
+        sheetName,
+        sourceRows,
+        duplicates,
+        missingLink,
+        readMs: readEnd - readStart,
+        dbMs: dbEnd - dbStart,
+        overallMs: overallEnd - overallStart
+      }),
+      fileName: source.name
+    };
+    return payloadResponse;
+  });
+
+  ipcMain.handle("select-directory", async (_event, payload = {}) => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openDirectory"],
+      title: "Wybierz folder dla operacji danych",
+      defaultPath: payload?.defaultPath
+    });
+    if (result.canceled || !result.filePaths.length) {
+      return { status: "cancelled", error: "Użytkownik anulował wybór" };
+    }
+    return { status: "ok", path: result.filePaths[0] };
+  });
+
+  ipcMain.handle("get-app-directory", () => ({
+    status: "ok",
+    path: app.getAppPath() || __dirname
+  }));
+
+  ipcMain.handle("select-file", async (_event, payload = {}) => {
+    const { defaultPath, filters } = payload;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile"],
+      title: "Wybierz plik danych",
+      defaultPath,
+      filters: filters && Array.isArray(filters) ? filters : [{ name: "Arkusze Excel", extensions: ["xlsx"] }]
+    });
+    if (result.canceled || !result.filePaths.length) {
+      return { status: "cancelled", error: "Użytkownik anulował wybór" };
+    }
+    return { status: "ok", path: result.filePaths[0] };
+  });
+
+  ipcMain.handle("resolve-import-file", async (_event, payload = {}) => {
+    const { directory, filePath, prefix } = payload;
+    const source = await resolveSourceFile({ directory, filePath, prefix: prefix || DATA_PREFIXES.importDb });
+    return { status: "ok", filePath: source.path, fileName: source.name };
+  });
+
+  ipcMain.handle("save-file", async (_event, payload = {}) => {
+    const { directory, fileName, data, binary = true } = payload;
+    if (!fileName) {
+      return { status: "error", error: "Brak nazwy pliku" };
+    }
+    const targetDir = directory || app.getAppPath() || __dirname;
+    await ensureDirectory(targetDir);
+    const filePath = path.join(targetDir, fileName);
+    const buffer = binary ? Buffer.from(data || []) : Buffer.from(String(data ?? ""), "utf8");
+    await fs.promises.writeFile(filePath, buffer);
+    return { status: "ok", filePath };
+  });
+}
+
+app.whenReady().then(async () => {
+  await bootstrapDatabase();
+  registerHandlers();
+  await createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});
