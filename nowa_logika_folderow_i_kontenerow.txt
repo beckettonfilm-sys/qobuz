@@ -1,0 +1,134 @@
+Obecne rozwiązanie masz „działające”, ale to jest model danych na skróty: w tabeli zajebiste_dane trzymasz album razem z folder i container. To oznacza, że album z definicji może mieć tylko jedno miejsce, a „album w wielu folderach” robisz teraz przez duplikowanie rekordów (u Ciebie to już widać po logice ory_copy: "C" i tworzeniu kopii w assignAlbumToFolder). To działa… dopóki nie zaczniesz edytować danych i nie okaże się, że masz 3 kopie tego samego albumu rozjechane między sobą.
+
+Jeśli chcesz jeden album w wielu folderach jednocześnie i chcesz, żeby to było „porządne” – to tak: oddziel albumy od przypisań. Czyli klasyka: relacja wiele-do-wielu (many-to-many) przez tabelę łącznikową.
+
+Najlepszy model (normalizacja + tabela łącznikowa)
+1) albums – album jako byt (unikalny)
+
+Jeden rekord na album. Kluczem unikalnym u Ciebie i tak jest link.
+
+CREATE TABLE IF NOT EXISTS albums (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  link TEXT NOT NULL UNIQUE,
+  picture TEXT,
+  artist TEXT,
+  title TEXT,
+  duration INTEGER,
+  release_date INTEGER,
+  label TEXT,
+  heard INTEGER NOT NULL DEFAULT 0,
+  selector TEXT NOT NULL DEFAULT 'N',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+2) containers – kontenery jako byty
+CREATE TABLE IF NOT EXISTS containers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+3) folders – foldery jako byty (folder należy do kontenera)
+
+U Ciebie folder ma przypisany kontener (folderMeta: folder -> container), więc to jest relacja 1-do-wielu: kontener → foldery.
+
+CREATE TABLE IF NOT EXISTS folders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  container_id INTEGER NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_folders_container_id ON folders(container_id);
+
+4) album_folders – tu jest cała magia
+
+To jest tabela łącznikowa: jeden album może być w wielu folderach, a folder ma wiele albumów. I tu trzymasz rzeczy „per przypisanie”, np. added_ts i kolejność w folderze.
+
+CREATE TABLE IF NOT EXISTS album_folders (
+  album_id INTEGER NOT NULL,
+  folder_id INTEGER NOT NULL,
+  added_ts INTEGER NOT NULL DEFAULT 0,
+  row_order INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (album_id, folder_id),
+  FOREIGN KEY(album_id) REFERENCES albums(id) ON DELETE CASCADE,
+  FOREIGN KEY(folder_id) REFERENCES folders(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_album_folders_folder ON album_folders(folder_id, row_order);
+CREATE INDEX IF NOT EXISTS idx_album_folders_album ON album_folders(album_id);
+
+Jak to wtedy działa w aplikacji (logika)
+Przypisanie albumu do folderu
+
+Zamiast kopiować rekord albumu:
+
+Upewniasz się, że album istnieje w albums (UPSERT po link)
+
+Upewniasz się, że folder istnieje w folders
+
+Robisz wpis w album_folders:
+
+jeśli już jest → nic nie robisz
+
+jeśli nie ma → INSERT, ustawiasz added_ts, row_order
+
+Efekt: ten sam album może być w 5 folderach, ale dane albumu (artist/title/itd.) są tylko raz.
+
+Usunięcie albumu z folderu
+
+Kasujesz tylko wiersz z album_folders dla (album_id, folder_id). Album zostaje w innych folderach.
+
+Usunięcie folderu
+
+Kasujesz folder z folders. SQLite przez ON DELETE CASCADE usuwa wszystkie wpisy w album_folders. Albumy zostają.
+
+Zmiana nazwy folderu/kontenera
+
+Aktualizujesz tylko folders.name / containers.name. Żadnego grzebania w albumach i żadnych masowych update’ów po całej tabeli jak teraz.
+
+Co z polami typu added, ory_copy, row_order?
+
+added (u Ciebie “kiedy dodany do folderu”) – to jest cecha przypisania, więc idzie do album_folders.added_ts.
+
+row_order – też per folder, więc do album_folders.row_order.
+
+ory_copy – przestaje mieć sens, bo kopii albumu już nie robisz. Jeśli chcesz widzieć „album jest w wielu folderach”, to liczysz COUNT(*) z album_folders dla tego albumu.
+
+selector, heard – pytanie: czy to ma być globalne dla albumu, czy per folder?
+
+Jeśli globalne (najczęściej tak) → zostaje w albums.
+
+Jeśli chcesz różne selektory per folder → dodajesz kolumnę selector do album_folders. (To już zależy od Twojej idei aplikacji.)
+
+Migracja z obecnej bazy (ważne i proste)
+
+Obecnie masz tylko jedną tabelę zajebiste_dane z folder i container jako tekst. Migracja wygląda tak:
+
+Tworzysz nowe tabele (albums, containers, folders, album_folders)
+
+Wstawiasz unikalne kontenery:
+
+INSERT OR IGNORE INTO containers(name) SELECT DISTINCT container FROM zajebiste_dane WHERE container != 'brak';
+
+Wstawiasz unikalne foldery z przypisaniem do kontenera:
+
+dla każdego folderu bierzesz jego container (np. pierwszy znaleziony)
+
+Wstawiasz unikalne albumy:
+
+INSERT OR IGNORE INTO albums(link, picture, artist, title, duration, release_date, label, heard, selector) SELECT DISTINCT link, picture, artist, title, duration, release_date, label, heard, selector FROM zajebiste_dane WHERE link != '';
+
+Wstawiasz przypisania:
+
+dla każdego rekordu z folder != 'brak' tworzysz wpis w album_folders (album_id po link + folder_id po name). Jeśli były „kopie” albumu w wielu folderach – to po migracji staną się wieloma przypisaniami, czyli dokładnie to, czego chcesz.
+
+„A może tabela dla folderów i kontenerów?” – tak, ale nie tylko
+
+Samo dodanie tabeli folderów/kontenerów bez tabeli łącznikowej nic Ci nie da, bo problemem jest wielokrotne przypisanie albumu. Klucz to album_folders (join table). Foldery i kontenery jako osobne tabele to naturalna konsekwencja, bo wtedy:
+
+nazwy są unikalne i spójne
+
+zmiana nazwy nie psuje starych rekordów
+
+możesz trzymać kolejność, kolory, daty utworzenia, itd.
