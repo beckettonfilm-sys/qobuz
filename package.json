@@ -1,0 +1,24 @@
+{
+  "name": "qobuz",
+  "version": "1.0.0",
+  "description": "Electron desktop port of the Qobuz album browser UI with SQLite persistence",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "export": "node export-to-xlsx.js",
+    "import": "node import-from-xlsx.js",
+    "dist": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "sqlite3": "latest",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "latest"
+  }
+}
