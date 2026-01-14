@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   resolveImportFile: (payload = {}) => ipcRenderer.invoke("resolve-import-file", payload),
   resolveJsonFile: (payload = {}) => ipcRenderer.invoke("resolve-json-file", payload),
   saveFile: (payload) => ipcRenderer.invoke("save-file", payload),
+  checkFileExists: (payload = {}) => ipcRenderer.invoke("check-file-exists", payload),
   backupDatabase: () => ipcRenderer.invoke("backup-database"),
   checkDatabase: (payload = {}) => ipcRenderer.invoke("check-database", payload),
   deleteAlbumAssets: (payload = {}) => ipcRenderer.invoke("delete-album-assets", payload),
@@ -24,5 +25,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onImportJsonProgress: (handler) => ipcRenderer.on("import-json-progress", handler),
   removeImportJsonProgress: (handler) => ipcRenderer.removeListener("import-json-progress", handler),
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
-  maximizeTidalWindow: () => ipcRenderer.invoke("maximize-tidal-window")
+  maximizeTidalWindow: () => ipcRenderer.invoke("maximize-tidal-window"),
+  onAppCloseRequest: (handler) => ipcRenderer.on("app-close-request", handler),
+  confirmAppClose: () => ipcRenderer.send("app-close-confirmed")
 });

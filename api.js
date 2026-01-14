@@ -99,6 +99,15 @@ async function selectFile(options = {}) {
   throw new Error(response?.error || "Nie udało się wybrać pliku");
 }
 
+async function checkFileExists(options = {}) {
+  const api = ensureElectronAPI();
+  const response = await api.checkFileExists(options);
+  if (!response || response.status !== "ok") {
+    throw new Error(response?.error || "Nie udało się sprawdzić pliku");
+  }
+  return Boolean(response.exists);
+}
+
 async function resolveImportFile(options = {}) {
   const api = ensureElectronAPI();
   const response = await api.resolveImportFile(options);
@@ -238,5 +247,6 @@ export {
   deleteFilterPreset,
   isProcessRunning,
   onImportJsonProgress,
-  deleteAlbumAssets
+  deleteAlbumAssets,
+  checkFileExists
 };

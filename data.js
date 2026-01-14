@@ -272,6 +272,10 @@ class DataStore {
       favoriteRaw === true ? 1 : favoriteRaw === false ? 0 : Number.parseInt(favoriteRaw, 10);
     const favorite = Number.isFinite(favoriteNumber) && favoriteNumber > 0 ? 1 : 0;
     const updateTs = Number(row.UPDATE_TS ?? row.update_ts ?? row.updateTs ?? 0);
+    const bookletRaw = row.BOOKLET ?? row.booklet ?? 0;
+    const bookletValue =
+      bookletRaw === true ? 1 : bookletRaw === false ? 0 : Number.parseInt(bookletRaw, 10);
+    const booklet = Number.isFinite(bookletValue) && bookletValue > 0 ? 1 : 0;
     const artistTidal = String(row.ARTIST_TIDAL ?? row.ARTIST ?? "");
     const titleTidal = String(row.TITLE_TIDAL ?? row.TITLE ?? "");
     const artistRaffaello = String(row.ARTIST_RAFFAELLO ?? row.ARTIST ?? artistTidal ?? "");
@@ -294,6 +298,7 @@ class DataStore {
       duration: Number(row.DURATION) || 0,
       release_date: releaseDate,
       update_ts: Number.isFinite(updateTs) && updateTs > 0 ? updateTs : null,
+      booklet,
       release_original: row.RELEASE_DATE
     };
   }
@@ -1293,7 +1298,8 @@ class DataStore {
         TITLE_TIDAL: rec.title_tidal || rec.title || "",
         DURATION: rec.duration || 0,
         RELEASE_DATE: releaseValue,
-        UPDATE_TS: rec.update_ts || null
+        UPDATE_TS: rec.update_ts || null,
+        BOOKLET: rec.booklet ? 1 : 0
       };
     });
   }

@@ -151,7 +151,7 @@ function getColumnSet(columns = []) {
 
 function extractTidalAlbumId(link = "") {
   if (!link) return "";
-  const match = String(link).match(/tidal\.com\/album\/(\d+)/i);
+  const match = String(link).match(/tidal\.com\/(?:browse\/)?album\/(\d+)/i);
   return match ? match[1] : "";
 }
 
@@ -175,6 +175,7 @@ async function migrateAlbumsTable(db, columnSet) {
       duration INTEGER NULL,
       release_date INTEGER NULL,
       update_ts INTEGER NULL,
+      booklet INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   );
@@ -195,6 +196,7 @@ async function migrateAlbumsTable(db, columnSet) {
   const durationExpr = getCol("duration", "NULL");
   const releaseExpr = getCol("release_date", "NULL");
   const updateTsExpr = getCol("update_ts", "NULL");
+  const bookletExpr = getCol("booklet", "0");
   const updatedExpr = getCol("updated_at", "CURRENT_TIMESTAMP");
 
   await run(
@@ -215,6 +217,7 @@ async function migrateAlbumsTable(db, columnSet) {
       duration,
       release_date,
       update_ts,
+      booklet,
       updated_at
     )
     SELECT
@@ -233,6 +236,7 @@ async function migrateAlbumsTable(db, columnSet) {
       ${durationExpr},
       ${releaseExpr},
       ${updateTsExpr},
+      ${bookletExpr},
       ${updatedExpr}
     FROM "${TABLE_NAME}"`
   );
@@ -279,6 +283,7 @@ async function ensureSchema() {
         duration INTEGER NULL,
         release_date INTEGER NULL,
         update_ts INTEGER NULL,
+        booklet INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   );
@@ -293,6 +298,9 @@ async function ensureSchema() {
   }
   if (!refreshedSet.has("update_ts")) {
     await run(db, `ALTER TABLE "${TABLE_NAME}" ADD COLUMN update_ts INTEGER NULL`);
+  }
+  if (!refreshedSet.has("booklet")) {
+    await run(db, `ALTER TABLE "${TABLE_NAME}" ADD COLUMN booklet INTEGER NOT NULL DEFAULT 0`);
   }
 
   await run(db, `CREATE INDEX IF NOT EXISTS "idx_${TABLE_NAME}_row_order" ON "${TABLE_NAME}" (row_order)`);
@@ -413,7 +421,8 @@ const COLUMN_MAP = [
   { field: "TITLE_TIDAL", column: "title_tidal" },
   { field: "DURATION", column: "duration" },
   { field: "RELEASE_DATE", column: "release_date" },
-  { field: "UPDATE_TS", column: "update_ts" }
+  { field: "UPDATE_TS", column: "update_ts" },
+  { field: "BOOKLET", column: "booklet" }
 ];
 
 function normalizeValue(column, value) {
@@ -426,7 +435,8 @@ function normalizeValue(column, value) {
     column === "heard" ||
     column === "favorite" ||
     column === "id_albumu" ||
-    column === "update_ts"
+    column === "update_ts" ||
+    column === "booklet"
   ) {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : null;
@@ -450,6 +460,8 @@ function resolveRecordField(record = {}, field) {
       return getValue(["TITLE_RAFFAELLO", "TITLE", "title_raffaello", "title"]);
     case "TITLE_TIDAL":
       return getValue(["TITLE_TIDAL", "TITLE", "title_tidal", "title"]);
+    case "BOOKLET":
+      return getValue(["BOOKLET", "booklet"]) ?? 0;
     default: {
       const direct = getValue([field]);
       if (direct !== undefined) return direct;
