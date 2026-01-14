@@ -30,7 +30,8 @@ import {
   renameFilterPreset,
   deleteFilterPreset,
   isProcessRunning,
-  onImportJsonProgress
+  onImportJsonProgress,
+  checkFileExists
 } from "./api.js";
 
 const DATA_DIRECTORIES = {
@@ -576,6 +577,12 @@ class UiController {
       this.uiState.showAlbumId = false;
       document.body.classList.remove("show-album-id");
     });
+
+    if (window.electronAPI?.onAppCloseRequest) {
+      window.electronAPI.onAppCloseRequest(() => {
+        this.handleAppCloseRequest();
+      });
+    }
   }
 
   toggleFilterPanel() {
@@ -3813,6 +3820,13 @@ class UiController {
     }
     const date = new Date(yearNum, monthNum - 1, dayNum);
     if (Number.isNaN(date.getTime())) return 0;
+    if (
+      date.getFullYear() !== yearNum ||
+      date.getMonth() !== monthNum - 1 ||
+      date.getDate() !== dayNum
+    ) {
+      return 0;
+    }
     return Math.floor(date.getTime() / 1000);
   }
 
@@ -3939,28 +3953,49 @@ class UiController {
         return { wrapper, inputs };
       };
 
-      const titleRaffaelloInput = document.createElement("input");
-      titleRaffaelloInput.type = "text";
-      titleRaffaelloInput.className = "modal-input modal-input--row";
-      titleRaffaelloInput.value = album.title_raffaello || album.title || "";
+      const createLockableGroup = (group, { locked = true } = {}) => {
+        const wrap = document.createElement("div");
+        wrap.className = "modal-input-lock";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "modal-lock-btn";
+        button.setAttribute("aria-pressed", String(!locked));
+        const icon = document.createElement("img");
+        icon.alt = locked ? "Zablokowane" : "Odblokowane";
+        button.appendChild(icon);
 
-      const artistRaffaelloInput = document.createElement("input");
-      artistRaffaelloInput.type = "text";
-      artistRaffaelloInput.className = "modal-input modal-input--row";
-      artistRaffaelloInput.value = album.artist_raffaello || album.artist || "";
+        const setLocked = (isLocked) => {
+          group.inputs.forEach((input) => {
+            input.readOnly = isLocked;
+            input.classList.toggle("modal-input--locked", isLocked);
+          });
+          icon.src = isLocked ? "icons/lock_icon_OFF.svg" : "icons/lock_icon_ON.svg";
+          icon.alt = isLocked ? "Zablokowane" : "Odblokowane";
+          button.setAttribute("aria-pressed", String(!isLocked));
+          button.title = isLocked ? "Odblokuj pole" : "Zablokuj pole";
+        };
 
+        button.addEventListener("click", () => {
+          const nextLocked = !group.inputs[0]?.readOnly;
+          setLocked(nextLocked);
+          if (!nextLocked) {
+            group.inputs[0]?.focus();
+            group.inputs[0]?.select();
+          }
+        });
+
+        setLocked(locked);
+        wrap.appendChild(group.wrapper);
+        wrap.appendChild(button);
+        return { wrap, setLocked };
+      };
+
+      const titleRaffaelloField = createLockableInput(album.title_raffaello || album.title || "", { locked: true });
+      const artistRaffaelloField = createLockableInput(album.artist_raffaello || album.artist || "", { locked: true });
       const titleTidalField = createLockableInput(album.title_tidal || album.title || "", { locked: true });
       const artistTidalField = createLockableInput(album.artist_tidal || album.artist || "", { locked: true });
-
-      const linkInput = document.createElement("input");
-      linkInput.type = "text";
-      linkInput.className = "modal-input modal-input--row";
-      linkInput.value = album.link || "";
-
-      const pictureInput = document.createElement("input");
-      pictureInput.type = "text";
-      pictureInput.className = "modal-input modal-input--row";
-      pictureInput.value = album.picture || "";
+      const linkField = createLockableInput(album.link || "", { locked: true });
+      const pictureField = createLockableInput(album.picture || "", { locked: true });
 
       const releaseBaseValue =
         album.release_original !== undefined && album.release_original !== null
@@ -3972,6 +4007,7 @@ class UiController {
         separator: ".",
         sizes: [2, 2, 4]
       });
+      const releaseField = createLockableGroup(releaseGroup, { locked: true });
 
       const durationParts = this.formatDurationParts(album.duration || 0);
       const durationGroup = buildSegmentedInput({
@@ -3979,6 +4015,7 @@ class UiController {
         separator: ":",
         sizes: [2, 2, 2]
       });
+      const durationField = createLockableGroup(durationGroup, { locked: true });
 
       const labelSelect = document.createElement("select");
       labelSelect.className = "modal-input modal-input--row";
@@ -4001,15 +4038,27 @@ class UiController {
         }
       }
 
+      const bookletSwitch = this.createSwitch({
+        leftLabel: "OFF",
+        rightLabel: "ON",
+        defaultRight: Boolean(album.booklet),
+        compact: true
+      });
+      this.updateSwitchLabels(bookletSwitch.input, bookletSwitch.leftLabel, bookletSwitch.rightLabel);
+      bookletSwitch.input.addEventListener("change", () => {
+        this.updateSwitchLabels(bookletSwitch.input, bookletSwitch.leftLabel, bookletSwitch.rightLabel);
+      });
+
       form.appendChild(buildRow("LABEL", labelSelect));
-      form.appendChild(buildRow("TITLE Raffaello", titleRaffaelloInput));
-      form.appendChild(buildRow("ARTIST Raffaello", artistRaffaelloInput));
+      form.appendChild(buildRow("BOOKLET", bookletSwitch.wrapper));
+      form.appendChild(buildRow("TITLE Raffaello", titleRaffaelloField.wrap));
+      form.appendChild(buildRow("ARTIST Raffaello", artistRaffaelloField.wrap));
       form.appendChild(buildRow("TITLE Tidal", titleTidalField.wrap));
       form.appendChild(buildRow("ARTIST Tidal", artistTidalField.wrap));
-      form.appendChild(buildRow("LINK", linkInput));
-      form.appendChild(buildRow("PICTURE", pictureInput));
-      form.appendChild(buildRow("RELEASE DATE", releaseGroup.wrapper));
-      form.appendChild(buildRow("DURATION", durationGroup.wrapper));
+      form.appendChild(buildRow("LINK", linkField.wrap));
+      form.appendChild(buildRow("PICTURE", pictureField.wrap));
+      form.appendChild(buildRow("RELEASE DATE", releaseField.wrap));
+      form.appendChild(buildRow("DURATION", durationField.wrap));
 
       const actions = document.createElement("div");
       actions.className = "modal-actions";
@@ -4038,25 +4087,56 @@ class UiController {
         resolve(saved);
       };
 
-      cancelBtn.addEventListener("click", () => cleanup(false));
-      confirmBtn.addEventListener("click", () => {
-        const releaseText = releaseGroup.inputs.map((input) => input.value.trim()).join(".");
-        const nextRelease = this.parseReleaseDateParts(
+      const validateReleaseInput = () => {
+        const values = releaseGroup.inputs.map((input) => input.value.trim());
+        const hasAny = values.some((value) => value !== "");
+        if (!hasAny) return { valid: true, value: 0 };
+        if (values.some((value) => value !== "" && !/^\d+$/.test(value))) {
+          return { valid: false, value: 0 };
+        }
+        const parsed = this.parseReleaseDateParts(
           releaseGroup.inputs[0]?.value,
           releaseGroup.inputs[1]?.value,
           releaseGroup.inputs[2]?.value
         );
-        const nextDuration = this.parseDurationParts(
+        if (!parsed) return { valid: false, value: 0 };
+        return { valid: true, value: parsed };
+      };
+
+      const validateDurationInput = () => {
+        const values = durationGroup.inputs.map((input) => input.value.trim());
+        const hasAny = values.some((value) => value !== "");
+        if (!hasAny) return { valid: true, value: 0 };
+        if (values.some((value) => value !== "" && !/^\d+$/.test(value))) {
+          return { valid: false, value: 0 };
+        }
+        if (values.some((value) => value !== "" && Number(value) > 99)) {
+          return { valid: false, value: 0 };
+        }
+        const parsed = this.parseDurationParts(
           durationGroup.inputs[0]?.value,
           durationGroup.inputs[1]?.value,
           durationGroup.inputs[2]?.value
         );
-        const nextTitleRaffaello = titleRaffaelloInput.value.trim();
-        const nextArtistRaffaello = artistRaffaelloInput.value.trim();
+        return { valid: true, value: parsed };
+      };
+
+      cancelBtn.addEventListener("click", () => cleanup(false));
+      confirmBtn.addEventListener("click", async () => {
+        const releaseValidation = validateReleaseInput();
+        const durationValidation = validateDurationInput();
+        if (!releaseValidation.valid || !durationValidation.valid) {
+          await this.infoModal({ message: "Wprowadzono nieprawidłową wartość." });
+          return;
+        }
+        const nextRelease = releaseValidation.value;
+        const nextDuration = durationValidation.value;
+        const nextTitleRaffaello = titleRaffaelloField.input.value.trim();
+        const nextArtistRaffaello = artistRaffaelloField.input.value.trim();
         const nextTitleTidal = titleTidalField.input.value.trim();
         const nextArtistTidal = artistTidalField.input.value.trim();
         const updates = {
-          link: linkInput.value.trim(),
+          link: linkField.input.value.trim(),
           artist: nextArtistRaffaello,
           artist_raffaello: nextArtistRaffaello,
           artist_tidal: nextArtistTidal,
@@ -4066,8 +4146,9 @@ class UiController {
           duration: nextDuration,
           release_date: nextRelease,
           release_original: nextRelease || 0,
-          picture: pictureInput.value.trim(),
-          label: labelSelect.value || album.label || ""
+          picture: pictureField.input.value.trim(),
+          label: labelSelect.value || album.label || "",
+          booklet: bookletSwitch.input.checked ? 1 : 0
         };
         const { changed } = this.store.updateAlbumData(album, updates);
         if (changed) {
@@ -4089,8 +4170,8 @@ class UiController {
       cancelBtn.addEventListener("keydown", onKeyDown);
 
       setTimeout(() => {
-        titleRaffaelloInput.focus();
-        titleRaffaelloInput.select();
+        titleRaffaelloField.input.focus();
+        titleRaffaelloField.input.select();
       }, 0);
     });
   }
@@ -4873,6 +4954,16 @@ class UiController {
     this.showErrorStatusMessage("Nie można otworzyć wybranego albumu. Brak połączenia z Internetem.");
   }
 
+  async ensureAppDirectory() {
+    if (this.uiState.appDirectory) return this.uiState.appDirectory;
+    try {
+      this.uiState.appDirectory = await getAppDirectory();
+    } catch (error) {
+      console.warn("Nie udało się ustalić katalogu aplikacji:", error);
+    }
+    return this.uiState.appDirectory;
+  }
+
   getLocalImageUrl(folderName, fileName) {
     if (!folderName || !fileName) return "";
     const basePath = this.uiState.appDirectory || "";
@@ -4883,6 +4974,19 @@ class UiController {
     const normalized = resolvedPath.replace(/\\/g, "/");
     const prefix = normalized.startsWith("/") ? "file://" : "file:///";
     return encodeURI(`${prefix}${normalized}`);
+  }
+
+  getBookletFileName(album) {
+    const id = Number(album?.id_albumu);
+    if (!Number.isFinite(id) || id <= 0) return "";
+    return `booklet_${id}.pdf`;
+  }
+
+  getBookletFilePath(album) {
+    if (!this.uiState.appDirectory) return "";
+    const fileName = this.getBookletFileName(album);
+    if (!fileName) return "";
+    return buildPath(this.uiState.appDirectory, "BOOKLET", fileName);
   }
 
   getAlbumCoverUrl(album, { size = "mini" } = {}) {
@@ -4916,6 +5020,31 @@ class UiController {
     this.dom.coverPreviewImage = image;
   }
 
+  ensureBookletPreview() {
+    if (this.dom.bookletPreview) return;
+    const overlay = document.createElement("div");
+    overlay.className = "booklet-preview";
+    const content = document.createElement("div");
+    content.className = "booklet-preview__content";
+    const frame = document.createElement("iframe");
+    frame.className = "booklet-preview__frame";
+    frame.setAttribute("title", "Booklet");
+    frame.setAttribute("loading", "lazy");
+    content.appendChild(frame);
+    overlay.appendChild(content);
+    const close = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.hideBookletPreview();
+    };
+    overlay.addEventListener("click", close);
+    overlay.addEventListener("contextmenu", close);
+    content.addEventListener("click", (event) => event.stopPropagation());
+    document.body.appendChild(overlay);
+    this.dom.bookletPreview = overlay;
+    this.dom.bookletPreviewFrame = frame;
+  }
+
   showCoverPreview(album) {
     if (!album) return;
     this.ensureCoverPreview();
@@ -4933,6 +5062,15 @@ class UiController {
     coverPreview.classList.add("is-visible");
   }
 
+  showBookletPreview(url) {
+    if (!url) return;
+    this.ensureBookletPreview();
+    const { bookletPreview, bookletPreviewFrame } = this.dom;
+    if (!bookletPreview || !bookletPreviewFrame) return;
+    bookletPreviewFrame.src = url;
+    bookletPreview.classList.add("is-visible");
+  }
+
   hideCoverPreview() {
     const { coverPreview, coverPreviewImage } = this.dom;
     if (!coverPreview) return;
@@ -4940,6 +5078,43 @@ class UiController {
     if (coverPreviewImage) {
       coverPreviewImage.src = "";
     }
+  }
+
+  hideBookletPreview() {
+    const { bookletPreview, bookletPreviewFrame } = this.dom;
+    if (!bookletPreview) return;
+    bookletPreview.classList.remove("is-visible");
+    if (bookletPreviewFrame) {
+      bookletPreviewFrame.src = "";
+    }
+  }
+
+  async openBookletPreview(album) {
+    if (!album) return;
+    const fileName = this.getBookletFileName(album);
+    if (!fileName) {
+      this.showStatusMessage("Brak pliku Booklet dla wybranego albumu.");
+      return;
+    }
+    await this.ensureAppDirectory();
+    const filePath = this.getBookletFilePath(album);
+    if (!filePath) {
+      this.showStatusMessage("Brak pliku Booklet dla wybranego albumu.");
+      return;
+    }
+    let exists = false;
+    try {
+      exists = await checkFileExists({ filePath });
+    } catch (error) {
+      this.showStatusMessage(error.message || "Nie udało się sprawdzić pliku Booklet.");
+      return;
+    }
+    if (!exists) {
+      this.showStatusMessage("Brak pliku Booklet dla wybranego albumu.");
+      return;
+    }
+    const url = this.getLocalImageUrl("BOOKLET", fileName);
+    this.showBookletPreview(url);
   }
 
   async openExternalLink(url, { requireOnline = false } = {}) {
@@ -4970,6 +5145,24 @@ class UiController {
     if (!Number.isFinite(updateTs) || updateTs <= 0) return false;
     const ageMs = Date.now() - updateTs;
     return ageMs >= 0 && ageMs <= 24 * 60 * 60 * 1000;
+  }
+
+  getAlbumStatusType(album) {
+    if (!album) return null;
+    const releaseDate = Number(album.release_date) || 0;
+    const todayStart = new Date(new Date().toDateString()).getTime() / 1000;
+    if (releaseDate && releaseDate > todayStart) {
+      return "coming-soon";
+    }
+    const isNewRelease = this.store.isNewRelease(album);
+    const isUpdateImport = this.isUpdateBadgeActive(album);
+    if (isUpdateImport && !isNewRelease) {
+      return "update";
+    }
+    if (isNewRelease) {
+      return "new";
+    }
+    return null;
   }
 
   createAlbumCard(entry) {
@@ -5011,29 +5204,35 @@ class UiController {
     });
     if (album.selector === "X") img.classList.add("grayscale");
 
+    const coverWrap = document.createElement("div");
+    coverWrap.className = "album-cover-wrap";
+    coverWrap.appendChild(img);
+
     const info = document.createElement("div");
     info.className = "album-info";
     const titleRow = document.createElement("div");
     titleRow.className = "album-title";
 
+    const hasBooklet = Number(album.booklet) > 0;
+    if (hasBooklet) {
+      const bookletBtn = document.createElement("button");
+      bookletBtn.type = "button";
+      bookletBtn.className = "album-booklet-btn";
+      const bookletIcon = document.createElement("img");
+      bookletIcon.src = "icons/booklet.svg";
+      bookletIcon.alt = "Booklet";
+      bookletBtn.appendChild(bookletIcon);
+      bookletBtn.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await this.openBookletPreview(album);
+      });
+      titleRow.appendChild(bookletBtn);
+    }
+
     const titleText = document.createElement("span");
     titleText.style.minWidth = "0";
     titleText.textContent = album.title;
-
-    const isUpdateImport = this.isUpdateBadgeActive(album);
-    const isNewRelease = this.store.isNewRelease(album);
-    if (isUpdateImport || isNewRelease) {
-      const badge = document.createElement("span");
-      badge.className = "album-new-flag";
-      if (isUpdateImport && !isNewRelease) {
-        badge.classList.add("album-new-flag--update");
-        badge.textContent = "UPDATE";
-      } else {
-        badge.textContent = "NEW";
-      }
-      titleRow.appendChild(badge);
-    }
-
     titleRow.appendChild(titleText);
 
     const artist = document.createElement("div");
@@ -5363,7 +5562,23 @@ class UiController {
       }
     });
 
-    card.appendChild(img);
+    const statusType = this.getAlbumStatusType(album);
+    if (statusType) {
+      const status = document.createElement("img");
+      status.className = "album-status-label";
+      if (statusType === "coming-soon") {
+        status.src = "icons/etykieta_Coming_soon.svg";
+        status.alt = "Coming soon";
+      } else if (statusType === "update") {
+        status.src = "icons/etykieta_UPDATE.svg";
+        status.alt = "Update";
+      } else {
+        status.src = "icons/etykieta_NEW.svg";
+        status.alt = "New";
+      }
+      coverWrap.appendChild(status);
+    }
+    card.appendChild(coverWrap);
     card.appendChild(info);
     card.appendChild(icon);
     card.appendChild(favoriteCorner);
@@ -5744,6 +5959,21 @@ class UiController {
   } finally {
     this.finishOperation();
   }
+  }
+
+  async handleAppCloseRequest() {
+    const confirmed = await this.confirmModal({
+      title: "Zamknięcie aplikacji",
+      message: "Czy chcesz zapisać wprowadzone zmiany przed zamknięciem aplikacji?",
+      confirmText: "ZAPISZ",
+      cancelText: "ANULUJ"
+    });
+    if (confirmed) {
+      await this.handleSave();
+    }
+    if (window.electronAPI?.confirmAppClose) {
+      window.electronAPI.confirmAppClose();
+    }
   }
 
   async handleDatabaseBackup() {

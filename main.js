@@ -244,7 +244,7 @@ function parseJsonReleaseDate(value) {
 
 function extractTidalAlbumId(link = "") {
   if (!link) return "";
-  const match = String(link).match(/tidal\.com\/album\/(\d+)/i);
+  const match = String(link).match(/tidal\.com\/(?:browse\/)?album\/(\d+)/i);
   return match ? match[1] : "";
 }
 
@@ -356,6 +356,7 @@ async function ensureDirectory(dirPath) {
   await fs.promises.mkdir(dirPath, { recursive: true });
 }
 let mainWindow;
+let allowAppClose = false;
 
 function buildExportSummary({ total, schemaMs, dbMs, xlsxMs, overallMs, fileName }) {
   const lines = [
@@ -453,6 +454,13 @@ async function createWindow() {
   });
 
   mainWindow.maximize();
+  allowAppClose = false;
+
+  mainWindow.on("close", (event) => {
+    if (allowAppClose) return;
+    event.preventDefault();
+    mainWindow.webContents.send("app-close-request");
+  });
 
   if (process.platform !== "darwin") {
     mainWindow.setMenuBarVisibility(false);
@@ -932,6 +940,7 @@ function registerHandlers() {
         SELECTOR: "N",
         HEARD: 0,
         FAVORITE: 0,
+        BOOKLET: 0,
         LABEL: "unknown",
         LINK: link,
         PICTURE: picture,
@@ -1083,6 +1092,22 @@ function registerHandlers() {
     return { status: "ok", filePath };
   });
 
+  ipcMain.handle("check-file-exists", async (_event, payload = {}) => {
+    const filePath = String(payload?.filePath || "");
+    if (!filePath) {
+      return { status: "error", error: "Brak ścieżki pliku." };
+    }
+    try {
+      await fs.promises.access(filePath, fs.constants.F_OK);
+      return { status: "ok", exists: true };
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        return { status: "ok", exists: false };
+      }
+      return { status: "error", error: error.message || "Nie udało się sprawdzić pliku." };
+    }
+  });
+
   ipcMain.handle("open-external", async (_event, url) => {
     if (!url || typeof url !== "string") return false;
     await shell.openExternal(url);
@@ -1113,6 +1138,15 @@ function registerHandlers() {
 
   ipcMain.handle("maximize-tidal-window", async () => {
     return maximizeTidalWindow();
+  });
+
+  ipcMain.on("app-close-confirmed", () => {
+    allowAppClose = true;
+    if (mainWindow) {
+      mainWindow.close();
+    } else {
+      app.quit();
+    }
   });
 }
 
