@@ -1,0 +1,25 @@
+{
+  "name": "qobuz",
+  "version": "1.0.0",
+  "description": "Electron desktop port of the Raffaello album browser UI with SQLite persistence",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "export": "node export-to-xlsx.js",
+    "import": "node import-from-xlsx.js",
+    "dist": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "sqlite3": "5.1.7",
+    "xlsx": "^0.18.5",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "electron": "39.2.7"
+  }
+}
